@@ -141,7 +141,7 @@ def get_q_decom_args(args):
     # 学习率
     args.lr = 5e-4
     # epsilon greedy
-    args.epsilon = 0.05 #1
+    args.epsilon = 1
     args.min_epsilon = 0.05
     # TODO: By default, the args.epsilon_decay is = (args.epsilon - args.min_epsilon) / 50000
     # args.epsilon_decay = (args.epsilon - args.min_epsilon) / 100000
