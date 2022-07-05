@@ -1,0 +1,21 @@
+05-05-2022 17:12:05 absl:INFO:Launching SC2: /home/shubham/StarCraftII/Versions/Base75689/SC2_x64 -listen 127.0.0.1 -port 24228 -dataDir /home/shubham/StarCraftII/ -tempDir /tmp/sc-zn6_ywjl/
+05-05-2022 17:12:05 absl:INFO:Connecting to: ws://127.0.0.1:24228/sc2api, attempt: 0, running: True
+05-05-2022 17:12:06 absl:INFO:Connecting to: ws://127.0.0.1:24228/sc2api, attempt: 1, running: True
+05-05-2022 17:12:07 absl:INFO:Connecting to: ws://127.0.0.1:24228/sc2api, attempt: 2, running: True
+05-05-2022 17:12:10 root:DEBUG:Ally unit 0 is 1971, x = 30.340576171875, y = 37.4599609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 1 is 1971, x = 32.090576171875, y = 39.2099609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 2 is 1971, x = 28.590576171875, y = 39.2099609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 3 is 1971, x = 30.340576171875, y = 39.271484375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 4 is 1971, x = 32.029052734375, y = 40.9599609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 5 is 1971, x = 33.840576171875, y = 40.9599609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 6 is 1971, x = 28.652099609375, y = 40.9599609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 7 is 1971, x = 30.340576171875, y = 40.9599609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 8 is 1971, x = 30.340576171875, y = 42.6484375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 9 is 1971, x = 28.590576171875, y = 42.7099609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 10 is 1971, x = 32.090576171875, y = 42.7099609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:Ally unit 11 is 1971, x = 30.340576171875, y = 44.4599609375, in platoon 0.
+05-05-2022 17:12:10 root:DEBUG:*********************Started Episode 0**********************
+05-05-2022 17:12:10 root:DEBUG:-------------------------Platoon: 0-------------------------
+05-05-2022 17:12:10 root:DEBUG:------------------------Obs Agent: 0------------------------
+05-05-2022 17:12:10 absl:INFO:Shutdown gracefully.
+05-05-2022 17:12:10 absl:INFO:Shutdown with return code: -15
