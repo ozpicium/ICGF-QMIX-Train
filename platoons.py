@@ -54,29 +54,26 @@ class Platoon:
         return
 
     def choose_action(self, obs, last_action, agent_idx, avail_actions_mask, epsilon, evaluate=False):
-        # 可供选择的动作
         avail_actions = np.nonzero(avail_actions_mask)[0]
-        # agent索引转为独热编码
-        # onehot_agent_idx = np.zeros(self.args.n_agents)
         onehot_agent_idx = np.zeros(self.args.n_ally_agent_in_platoon)
         onehot_agent_idx[agent_idx] = 1.
         if self.args.last_action:
-            # 在水平方向上平铺
             obs = np.hstack((obs, last_action))
         if self.args.reuse_network:
             obs = np.hstack((obs, onehot_agent_idx))
         hidden_state = self.policy.eval_hidden[:, agent_idx, :]
-        # 转置
+
         obs = torch.Tensor(obs).unsqueeze(0)
         avail_actions_mask = torch.Tensor(avail_actions_mask).unsqueeze(0)
-        # 是否使用 GPU
+
         if self.args.cuda:
             obs = obs.cuda()
             hidden_state = hidden_state.cuda()
-        # 获取 Q(s, a)
+
         qsa, self.policy.eval_hidden[:, agent_idx, :] = self.policy.eval_rnn(obs, hidden_state)
-        # 不可选的动作 q 值设为无穷小
+
         qsa[avail_actions_mask == 0.0] = -float("inf")
+        
         if np.random.uniform() < epsilon:
             return np.random.choice(avail_actions)
         return torch.argmax(qsa)
