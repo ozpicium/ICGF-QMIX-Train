@@ -481,13 +481,8 @@ class StarCraft2Env_HC(MultiAgentEnv):
         else:
             self._restart()
 
-        # Information kept for counting the reward
-        # self.death_tracker_ally = np.zeros(self.n_agents)
-        # TODO: Check if this death_tracker_ally works
         if self.hierarchical:
             self.death_tracker_ally = np.zeros((self.n_ally_platoons, self.n_ally_agent_in_platoon))
-            # TODO: 10-19 should we organize the enemies into platoons?
-            # self.death_tracker_enemy = np.zeros((self.n_enemy_platoons, self.n_enemy_unit_in_platoon))
 
         self.death_tracker_enemy = np.zeros(self.n_enemies)
         self.previous_ally_units = None
@@ -495,26 +490,15 @@ class StarCraft2Env_HC(MultiAgentEnv):
         self.win_counted = False
         self.defeat_counted = False
 
-        # ------- refresh the visitRecord--------------
-        # self.visitRecord = np.zeros((self.n_agents, 4))
-        # ---------------------------------------------
-
-        # TODO: last_action is optional to be included in the state.
-        # self.last_action = np.zeros((self.n_agents, self.n_actions))
-
-        # In hierarchical model, the last action record the action of 3 platoon, 12 agents in total.
         if self.hierarchical:
             self.last_action = np.zeros((self.n_ally_platoons, self.n_ally_agent_in_platoon, self.n_actions))
         if self.heuristic_ai:
             self.heuristic_targets = [None] * self.n_agents
+            
         try:
             self._obs = self._controller.observe()
-
             # TODO init platoons and company
-            if self.hierarchical:
-                self.init_platoons()
-            else:
-                self.init_units()  # initialize units (both agents and enemies)
+            self.init_platoons()
         except (protocol.ProtocolError, protocol.ConnectionError):
             self.full_restart()
 
@@ -522,11 +506,7 @@ class StarCraft2Env_HC(MultiAgentEnv):
             logging.debug("Started Episode {}"
                           .format(self._episode_count).center(60, "*"))
 
-        # return self.get_obs(), self.get_state()
-        if self.hierarchical:
-            return self.get_obs_company()
-        else:
-            return self.get_obs(), self.get_state()
+        return self.get_obs_company()
 
     def _restart(self):
         """Restart the environment by killing all units on the map.
@@ -544,160 +524,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
         self._sc2_proc.close()
         self._launch()
         self.force_restarts += 1
-
-    def step(self, actions):
-        """A single environment step. Returns reward, terminated, info."""
-        # new code
-        company_actions_int = []
-        # transform the platoon actions into integer
-        for platoon_actions in actions:
-            platoon_actions_int = [int(a) for a in platoon_actions]
-            company_actions_int.append(platoon_actions_int)
-
-        # store the last action in the environment
-        self.last_action = np.eye(self.n_actions)[np.array(platoon_actions_int)]
-
-        # Collect individual actions
-        company_sc_actions = []
-        if self.debug:
-            logging.debug("Actions".center(60, "-"))
-
-        for platoon_id in range(len(company_actions_int)):
-            platoon_sc_actions = []
-            for a_id, action in enumerate(company_actions_int[platoon_id]):
-                if not self.heuristic_ai:
-                    # platoon_sc_action = self.get_agent_action(a_id, action)
-                    platoon_sc_action = self.get_platoon_agent_action(a_id, platoon_id, action)
-                else:
-                    platoon_sc_action, action_num = self.get_agent_action_heuristic(
-                        a_id, action)
-                    actions[a_id] = action_num
-                if platoon_sc_action:
-                    platoon_sc_actions.append(platoon_sc_action)
-            company_sc_actions.append(platoon_sc_actions)
-
-        # flatten the platoon_sc_actions
-        flat_company_sc_actions = [action for platoon_sc_actions in company_sc_actions for action in platoon_sc_actions]
-
-        # Send action request
-        req_actions = sc_pb.RequestAction(actions=flat_company_sc_actions)
-        try:
-            self._controller.actions(req_actions)
-            # Make step in SC2, i.e. apply actions
-            self._controller.step(self._step_mul)
-            # Observe here so that we know if the episode is over.
-            self._obs = self._controller.observe()
-        except (protocol.ProtocolError, protocol.ConnectionError):
-            self.full_restart()
-            return 0, True, {}
-
-        # # -------------------------------------------------------------------------------------------
-        # # old code
-        # actions_int = [int(a) for a in actions]
-        # # TODO separate this last_action for 3 platoons.
-        # self.last_action = np.eye(self.n_actions)[np.array(actions_int)]
-        #
-        # # Collect individual actions
-        # sc_actions = []
-        # if self.debug:
-        #     logging.debug("Actions".center(60, "-"))
-        #
-        # for a_id, action in enumerate(actions_int):
-        #     if not self.heuristic_ai:
-        #         sc_action = self.get_agent_action(a_id, action)
-        #     else:
-        #         sc_action, action_num = self.get_agent_action_heuristic(
-        #             a_id, action)
-        #         actions[a_id] = action_num
-        #     if sc_action:
-        #         sc_actions.append(sc_action)
-        #
-        # # Send action request
-        # req_actions = sc_pb.RequestAction(actions=sc_actions)
-        # try:
-        #     self._controller.actions(req_actions)
-        #     # Make step in SC2, i.e. apply actions
-        #     self._controller.step(self._step_mul)
-        #     # Observe here so that we know if the episode is over.
-        #     self._obs = self._controller.observe()
-        # except (protocol.ProtocolError, protocol.ConnectionError):
-        #     self.full_restart()
-        #     return 0, True, {}
-
-        # count the steps
-        self._total_steps += 1
-        self._episode_steps += 1
-
-        # Update units. -1 = lost , 1 = win, 0 = equal
-        game_end_code = self.update_units()  # -1 means lost , 1 means win, 0 means equal
-
-        terminated = False
-
-        # calculate the reward
-        # reward = self.reward_battle()  # the reward will ge given after the agents take a set of actions
-        # reward_platoons = self.reward_battle_platoons()
-        reward = 0  # fake reward
-
-        info = {"battle_won": False}  # 为什么不运行这一行？
-
-        # count units that are still alive
-        dead_allies, dead_enemies = 0, 0
-        for al_id, al_unit in self.agents.items():
-            if al_unit.health == 0:
-                dead_allies += 1
-        for e_id, e_unit in self.enemies.items():
-            if e_unit.health == 0:
-                dead_enemies += 1
-
-        info['dead_allies'] = dead_allies
-        info['dead_enemies'] = dead_enemies
-
-        if game_end_code is not None:
-            # Battle is over
-            terminated = True
-            self.battles_game += 1
-            if game_end_code == 1 and not self.win_counted:
-                self.battles_won += 1
-                self.win_counted = True
-                info["battle_won"] = True
-                if not self.reward_sparse:
-                    reward += self.reward_win
-                else:
-                    reward = 1
-            elif game_end_code == -1 and not self.defeat_counted:
-                self.defeat_counted = True
-                if not self.reward_sparse:
-                    reward += self.reward_defeat
-                else:
-                    reward = -1
-
-        elif self._episode_steps >= self.episode_limit:
-            # Episode limit reached
-            terminated = True
-            if self.continuing_episode:
-                info["episode_limit"] = True
-            self.battles_game += 1
-            self.timeouts += 1
-
-        if self.debug:
-            logging.debug("Reward = {}".format(reward).center(60, '-'))
-
-        if terminated:
-            self._episode_count += 1
-
-        # add the win/loss information in the log file.
-        # if game_end_code is not None:
-        #    if game_end_code == 1:
-        #        result = 'win'
-        #    elif game_end_code == -1:
-        #        result = 'loss'
-        #    if self.debug:
-        #        logging.debug("Result = {}".format(result).center(60, '-'))
-
-        if self.reward_scale:
-            reward /= self.max_reward / self.reward_scale_rate
-
-        return reward, terminated, info
 
     def step_company(self, actions):
         """
@@ -747,52 +573,11 @@ class StarCraft2Env_HC(MultiAgentEnv):
             self.full_restart()
             # return 0, True, {}
             return [0] * self.n_ally_platoons, True, {}
-
-        # # -------------------------------------------------------------------------------------------
-        # # old code
-        # actions_int = [int(a) for a in actions]
-
-        # self.last_action = np.eye(self.n_actions)[np.array(actions_int)]
-        #
-        # # Collect individual actions
-        # sc_actions = []
-        # if self.debug:
-        #     logging.debug("Actions".center(60, "-"))
-        #
-        # for a_id, action in enumerate(actions_int):
-        #     if not self.heuristic_ai:
-        #         sc_action = self.get_agent_action(a_id, action)
-        #     else:
-        #         sc_action, action_num = self.get_agent_action_heuristic(
-        #             a_id, action)
-        #         actions[a_id] = action_num
-        #     if sc_action:
-        #         sc_actions.append(sc_action)
-        #
-        # # Send action request
-        # req_actions = sc_pb.RequestAction(actions=sc_actions)
-        # try:
-        #     self._controller.actions(req_actions)
-        #     # Make step in SC2, i.e. apply actions
-        #     self._controller.step(self._step_mul)
-        #     # Observe here so that we know if the episode is over.
-        #     self._obs = self._controller.observe()
-        # except (protocol.ProtocolError, protocol.ConnectionError):
-        #     self.full_restart()
-        #     return 0, True, {}
-
-        # count the steps
-        self._total_steps += 1
-        self._episode_steps += 1
-
-        # Update units. -1 = lost , 1 = win, 0 = equal
-        # game_end_code = self.update_units()  # -1 means lost , 1 means win, 0 means equal
+        
         game_end_code, arrive_reward = self.update_platoons()
 
         terminated = False
-
-        # reward = self.reward_battle()  # the reward will ge given after the agents take a set of actions
-
+        
         # TODO: Update the rewards for each platoons
         reward_platoons = self.reward_battle_company()  # a list of rewards
 
@@ -864,116 +649,12 @@ class StarCraft2Env_HC(MultiAgentEnv):
         if terminated:
             self._episode_count += 1
 
-        # add the win/loss information in the log file.
-        # if game_end_code is not None:
-        #    if game_end_code == 1:
-        #        result = 'win'
-        #    elif game_end_code == -1:
-        #        result = 'loss'
-        #    if self.debug:
-        #        logging.debug("Result = {}".format(result).center(60, '-'))
-
         if self.reward_scale:
             # reward /= self.max_reward / self.reward_scale_rate
             reward_platoons = [r / (self.max_reward / self.reward_scale_rate) for r in reward_platoons]
             # reward_platoons /= self.max_reward / self.reward_scale_rate
 
         return reward_platoons, terminated, info
-
-    def get_agent_action(self, a_id, action):
-        """Construct the action for agent a_id."""
-        avail_actions = self.get_avail_agent_actions(a_id)
-        assert avail_actions[action] == 1, \
-            "Agent {} cannot perform action {}".format(a_id, action)
-
-        unit = self.get_unit_by_id(a_id)
-        tag = unit.tag
-        x = unit.pos.x
-        y = unit.pos.y
-
-        if action == 0:
-            # no-op (valid only when dead)
-            assert unit.health == 0, "No-op only available for dead agents."
-            if self.debug:
-                logging.debug("Agent {}: Dead".format(a_id))
-            return None
-        elif action == 1:
-            # stop
-            cmd = r_pb.ActionRawUnitCommand(
-                ability_id=actions["stop"],
-                unit_tags=[tag],
-                queue_command=False)
-            if self.debug:
-                logging.debug("Agent {}: Stop".format(a_id))
-
-        elif action == 2:
-            # move north
-            cmd = r_pb.ActionRawUnitCommand(
-                ability_id=actions["move"],
-                target_world_space_pos=sc_common.Point2D(
-                    x=x, y=y + self._move_amount),
-                unit_tags=[tag],
-                queue_command=False)
-            if self.debug:
-                logging.debug("Agent {}: Move North".format(a_id))
-
-        elif action == 3:
-            # move south
-            cmd = r_pb.ActionRawUnitCommand(
-                ability_id=actions["move"],
-                target_world_space_pos=sc_common.Point2D(
-                    x=x, y=y - self._move_amount),
-                unit_tags=[tag],
-                queue_command=False)
-            if self.debug:
-                logging.debug("Agent {}: Move South".format(a_id))
-
-        elif action == 4:
-            # move east
-            cmd = r_pb.ActionRawUnitCommand(
-                ability_id=actions["move"],
-                target_world_space_pos=sc_common.Point2D(
-                    x=x + self._move_amount, y=y),
-                unit_tags=[tag],
-                queue_command=False)
-            if self.debug:
-                logging.debug("Agent {}: Move East".format(a_id))
-
-        elif action == 5:
-            # move west
-            cmd = r_pb.ActionRawUnitCommand(
-                ability_id=actions["move"],
-                target_world_space_pos=sc_common.Point2D(
-                    x=x - self._move_amount, y=y),
-                unit_tags=[tag],
-                queue_command=False)
-            if self.debug:
-                logging.debug("Agent {}: Move West".format(a_id))
-        else:
-            # attack/heal units that are in range
-            target_id = action - self.n_actions_no_attack
-            if self.map_type == "MMM" and unit.unit_type == self.medivac_id:
-                target_unit = self.agents[target_id]
-                action_name = "heal"
-            else:
-                target_unit = self.enemies[target_id]
-                action_name = "attack"
-
-            action_id = actions[action_name]
-            target_tag = target_unit.tag
-
-            cmd = r_pb.ActionRawUnitCommand(
-                ability_id=action_id,
-                target_unit_tag=target_tag,
-                unit_tags=[tag],
-                queue_command=False)
-
-            if self.debug:
-                logging.debug("Agent {} {}s unit # {}".format(
-                    a_id, action_name, target_id))
-
-        sc_action = sc_pb.Action(action_raw=r_pb.ActionRaw(unit_command=cmd))
-        return sc_action
 
     def get_platoon_agent_action(self, a_id, p_id, action):
         """Construct the action for agent a_id."""
@@ -1172,117 +853,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
         sc_action = sc_pb.Action(action_raw=r_pb.ActionRaw(unit_command=cmd))
         return sc_action, action_num
 
-    def reward_battle(self):
-        """Reward function when self.reward_spare==False.
-        Returns accumulative hit/shield point damage dealt to the enemy
-        + reward_death_value per enemy unit killed, and, in case
-        self.reward_only_positive == False, - (damage dealt to ally units
-        + reward_death_value per ally unit killed) * self.reward_negative_scale
-        """
-        if self.reward_sparse:
-            return 0
-
-        reward = 0
-        delta_deaths = 0
-        delta_ally = 0
-        delta_enemy = 0
-        # reward_reachAreaSum = 0
-        reward_ReachStrategicPoints = 0
-        neg_scale = self.reward_negative_scale
-
-        # update deaths
-        for al_id, al_unit in self.agents.items():
-            if not self.death_tracker_ally[al_id]:
-                # did not die so far
-                prev_health = (
-                        self.previous_ally_units[al_id].health
-                        + self.previous_ally_units[al_id].shield
-                )
-                if al_unit.health == 0:
-                    # just died
-                    self.death_tracker_ally[al_id] = 1
-                    if not self.reward_only_positive:
-                        # if ally units died, the delta_death will be a negative reward, a punishment.
-                        delta_deaths -= self.reward_death_value * neg_scale
-                    # delta_ally is the damage dealt to the ally units.
-                    delta_ally += prev_health * neg_scale
-                else:
-                    # still alive
-                    delta_ally += neg_scale * (
-                            prev_health - al_unit.health - al_unit.shield
-                    )
-
-        for e_id, e_unit in self.enemies.items():
-            if not self.death_tracker_enemy[e_id]:
-                prev_health = (
-                        self.previous_enemy_units[e_id].health
-                        + self.previous_enemy_units[e_id].shield
-                )
-                if e_unit.health == 0:
-                    self.death_tracker_enemy[e_id] = 1
-                    delta_deaths += self.reward_death_value
-                    delta_enemy += prev_health
-                else:
-                    delta_enemy += prev_health - e_unit.health - e_unit.shield
-
-        # r = self.reachArea_effect_range
-        # n_area = 4
-
-        # update rewards for locations
-        # for al_id, al_unit in self.agents.items():
-        #    for i in range(4):
-        #        if abs(al_unit.pos.x - self.areaCenter[i][0]) < r and abs(al_unit.pos.y - self.areaCenter[i][1]) < r:
-        #            if self.visitRecord[al_id][i] == 0:
-        #                self.visitRecord[al_id][i] = 1
-        #                reward_reachAreaSum += self.reward_reachArea
-        #        else:
-        #            continue
-
-        # Add rewards for getting closer to the strategic points.
-        # Version 1.0, use the difference between last distance and current position, divided by the last distance.
-        # for al_id, al_unit in self.agents.items():
-        #    last_distance = math.sqrt((self.previous_ally_units[al_id].pos.x - self.reward_StrategicPoint_loc[0])**2 + (self.previous_ally_units[al_id].pos.y - self.reward_StrategicPoint_loc[1])**2)
-        #    current_distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0])**2 + (al_unit.pos.y - self.reward_StrategicPoint_loc[1])**2)
-        #    reward_ReachStrategicPoints += (last_distance-current_distance)/last_distance * self.reward_StrategicPoint_val
-
-        # Version 1.1, use the difference between last distance and current position, divided by the total distance
-        for al_id, al_unit in self.agents.items():
-            initial_distance = math.sqrt((self.initial_pos[al_id][0] - self.reward_StrategicPoint_loc[0]) ** 2 + (
-                    self.initial_pos[al_id][1] - self.reward_StrategicPoint_loc[1]) ** 2)
-            last_distance = math.sqrt(
-                (self.previous_ally_units[al_id].pos.x - self.reward_StrategicPoint_loc[0]) ** 2 + (
-                        self.previous_ally_units[al_id].pos.y - self.reward_StrategicPoint_loc[1]) ** 2)
-            current_distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0]) ** 2 + (
-                    al_unit.pos.y - self.reward_StrategicPoint_loc[1]) ** 2)
-            reward_ReachStrategicPoints += (
-                                                   last_distance - current_distance) / initial_distance * self.reward_StrategicPoint_val
-        #    for i in range(4):
-        #        if abs(al_unit.pos.x - self.areaCenter[i][0]) < r and abs(al_unit.pos.y - self.areaCenter[i][1]) < r:
-        #            if self.visitRecord[al_id][i] == 0:
-        #                self.visitRecord[al_id][i] = 1
-        #                reward_reachAreaSum += self.reward_reachArea
-        #        else:
-        #            continue
-
-        if self.reward_only_positive:
-            # [OLD] reward = abs(delta_enemy + delta_deaths + reward_reachAreaSum)  # shield regeneration
-            # [origin] reward = abs(delta_enemy + delta_deaths)  # shield regeneration
-            # [Before 2021-08-14] reward = self.alpha * abs(delta_enemy + delta_deaths) + (1 - self.alpha) * reward_ReachStrategicPoints  # shield regeneration
-            # [2021-08-14 Update]
-            reward = self.alpha * abs(delta_enemy + delta_deaths) + (
-                    1 - self.alpha) * reward_ReachStrategicPoints
-        else:
-            # [origin] reward = delta_enemy + delta_deaths - delta_ally
-            # [OLD] reward = delta_enemy + delta_deaths - delta_ally + reward_reachAreaSum
-            # [Before 2021-08-14] reward = self.alpha * (delta_enemy + delta_deaths - delta_ally) + (1-self.alpha) * reward_ReachStrategicPoints
-            # [2021-08-14 Update]
-            reward = self.alpha * (delta_enemy + delta_deaths - delta_ally) + (
-                    1 - self.alpha) * reward_ReachStrategicPoints
-        return reward
-
-    # def reward_battle_platoons(self):
-    #     return None
-
     def reward_battle_platoon(self, pid):
         """Reward function when self.reward_spare==False.
         Returns accumulative hit/shield point damage dealt to the enemy
@@ -1342,25 +912,7 @@ class StarCraft2Env_HC(MultiAgentEnv):
                     delta_enemy += prev_health
                 else:
                     delta_enemy += prev_health - e_unit.health - e_unit.shield
-        # r = self.reachArea_effect_range
-        # n_area = 4
 
-        # update rewards for locations
-        # for al_id, al_unit in self.agents.items():
-        #    for i in range(4):
-        #        if abs(al_unit.pos.x - self.areaCenter[i][0]) < r and abs(al_unit.pos.y - self.areaCenter[i][1]) < r:
-        #            if self.visitRecord[al_id][i] == 0:
-        #                self.visitRecord[al_id][i] = 1
-        #                reward_reachAreaSum += self.reward_reachArea
-        #        else:
-        #            continue
-
-        # Add rewards for getting closer to the strategic points.
-        # Version 1.0, use the difference between last distance and current position, divided by the last distance.
-        # for al_id, al_unit in self.agents.items():
-        #    last_distance = math.sqrt((self.previous_ally_units[al_id].pos.x - self.reward_StrategicPoint_loc[0])**2 + (self.previous_ally_units[al_id].pos.y - self.reward_StrategicPoint_loc[1])**2)
-        #    current_distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0])**2 + (al_unit.pos.y - self.reward_StrategicPoint_loc[1])**2)
-        #    reward_ReachStrategicPoints += (last_distance-current_distance)/last_distance * self.reward_StrategicPoint_val
 
         # Version 1.1, use the difference between last distance and current position, divided by the total distance
         # TODO 10-19 update the rewards for approaching the SPs
@@ -1403,154 +955,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
             reward_platoon = self.reward_battle_platoon(pid)
             reward_company[pid] = reward_platoon
         return reward_company
-
-    #         reward = 0
-    #         delta_deaths = 0
-    #         delta_ally = 0
-    #         delta_enemy = 0
-    #         # TODO: Check the code of reward_battle_company
-    # # <<<<<<< HEAD
-    # #         reward_ReachStrategicPoints = 0
-    # #
-    # #         neg_scale = self.reward_negative_scale
-    # #
-    # #         # update deaths
-    # #         for platoon in self.ally_platoons:
-    # #             for al_id, al_unit in platoon.items():
-    # #                 if not self.death_tracker_ally[al_id]:
-    # #                     prev_health = (
-    # #                             self.previous_ally_units[al_id].health
-    # #                             + self.previous_ally_units[al_id].shield
-    # #                     )
-    # #                     if al_unit.health == 0:
-    # #                         # just died
-    # #                         self.death_tracker_ally[al_id] = 1
-    # #                         if not self.reward_only_positive:
-    # #                             # if ally units died, the delta_death will be a negative reward, a punishment.
-    # #                             delta_deaths -= self.reward_death_value * neg_scale
-    # #                         # delta_ally is the damage dealt to the ally units.
-    # #                         delta_ally += prev_health * neg_scale
-    # #                     else:
-    # #                         # still alive
-    # #                         delta_ally += neg_scale * (
-    # #                                 prev_health - al_unit.health - al_unit.shield
-    # #                         )
-    # #
-    # #         # codes for non-hierarchical design.
-    # #         # for al_id, al_unit in self.agents.items():
-    # #         #     if not self.death_tracker_ally[al_id]:
-    # #         #         # did not die so far
-    # #         #         prev_health = (
-    # #         #                 self.previous_ally_units[al_id].health
-    # #         #                 + self.previous_ally_units[al_id].shield
-    # #         #         )
-    # #         #         if al_unit.health == 0:
-    # #         #             # just died
-    # #         #             self.death_tracker_ally[al_id] = 1
-    # #         #             if not self.reward_only_positive:
-    # #         #                 # if ally units died, the delta_death will be a negative reward, a punishment.
-    # #         #                 delta_deaths -= self.reward_death_value * neg_scale
-    # #         #             # delta_ally is the damage dealt to the ally units.
-    # #         #             delta_ally += prev_health * neg_scale
-    # #         #         else:
-    # #         #             # still alive
-    # #         #             delta_ally += neg_scale * (
-    # #         #                     prev_health - al_unit.health - al_unit.shield
-    # #         #             )
-    # # =======
-    #         # reward_reachAreaSum = 0
-    #         reward_ReachStrategicPoints = 0
-    #         neg_scale = self.reward_negative_scale
-    #
-    #         # update deaths
-    #         for al_id, al_unit in self.agents.items():
-    #             if not self.death_tracker_ally[al_id]:
-    #                 # did not die so far
-    #                 prev_health = (
-    #                         self.previous_ally_units[al_id].health
-    #                         + self.previous_ally_units[al_id].shield
-    #                 )
-    #                 if al_unit.health == 0:
-    #                     # just died
-    #                     self.death_tracker_ally[al_id] = 1
-    #                     if not self.reward_only_positive:
-    #                         # if ally units died, the delta_death will be a negative reward, a punishment.
-    #                         delta_deaths -= self.reward_death_value * neg_scale
-    #                     # delta_ally is the damage dealt to the ally units.
-    #                     delta_ally += prev_health * neg_scale
-    #                 else:
-    #                     # still alive
-    #                     delta_ally += neg_scale * (
-    #                             prev_health - al_unit.health - al_unit.shield
-    #                     )
-    #
-    #         for e_id, e_unit in self.enemies.items():
-    #             if not self.death_tracker_enemy[e_id]:
-    #                 prev_health = (
-    #                         self.previous_enemy_units[e_id].health
-    #                         + self.previous_enemy_units[e_id].shield
-    #                 )
-    #                 if e_unit.health == 0:
-    #                     self.death_tracker_enemy[e_id] = 1
-    #                     delta_deaths += self.reward_death_value
-    #                     delta_enemy += prev_health
-    #                 else:
-    #                     delta_enemy += prev_health - e_unit.health - e_unit.shield
-    #
-    #         # r = self.reachArea_effect_range
-    #         # n_area = 4
-    #
-    #         # update rewards for locations
-    #         # for al_id, al_unit in self.agents.items():
-    #         #    for i in range(4):
-    #         #        if abs(al_unit.pos.x - self.areaCenter[i][0]) < r and abs(al_unit.pos.y - self.areaCenter[i][1]) < r:
-    #         #            if self.visitRecord[al_id][i] == 0:
-    #         #                self.visitRecord[al_id][i] = 1
-    #         #                reward_reachAreaSum += self.reward_reachArea
-    #         #        else:
-    #         #            continue
-    #
-    #         # Add rewards for getting closer to the strategic points.
-    #         # Version 1.0, use the difference between last distance and current position, divided by the last distance.
-    #         # for al_id, al_unit in self.agents.items():
-    #         #    last_distance = math.sqrt((self.previous_ally_units[al_id].pos.x - self.reward_StrategicPoint_loc[0])**2 + (self.previous_ally_units[al_id].pos.y - self.reward_StrategicPoint_loc[1])**2)
-    #         #    current_distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0])**2 + (al_unit.pos.y - self.reward_StrategicPoint_loc[1])**2)
-    #         #    reward_ReachStrategicPoints += (last_distance-current_distance)/last_distance * self.reward_StrategicPoint_val
-    #
-    #         # Version 1.1, use the difference between last distance and current position, divided by the total distance
-    #         for al_id, al_unit in self.agents.items():
-    #             initial_distance = math.sqrt((self.initial_pos[al_id][0] - self.reward_StrategicPoint_loc[0]) ** 2 + (
-    #                     self.initial_pos[al_id][1] - self.reward_StrategicPoint_loc[1]) ** 2)
-    #             last_distance = math.sqrt(
-    #                 (self.previous_ally_units[al_id].pos.x - self.reward_StrategicPoint_loc[0]) ** 2 + (
-    #                         self.previous_ally_units[al_id].pos.y - self.reward_StrategicPoint_loc[1]) ** 2)
-    #             current_distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0]) ** 2 + (
-    #                     al_unit.pos.y - self.reward_StrategicPoint_loc[1]) ** 2)
-    #             reward_ReachStrategicPoints += (
-    #                                                    last_distance - current_distance) / initial_distance * self.reward_StrategicPoint_val
-    #         #    for i in range(4):
-    #         #        if abs(al_unit.pos.x - self.areaCenter[i][0]) < r and abs(al_unit.pos.y - self.areaCenter[i][1]) < r:
-    #         #            if self.visitRecord[al_id][i] == 0:
-    #         #                self.visitRecord[al_id][i] = 1
-    #         #                reward_reachAreaSum += self.reward_reachArea
-    #         #        else:
-    #         #            continue
-    #
-    #         if self.reward_only_positive:
-    #             # [OLD] reward = abs(delta_enemy + delta_deaths + reward_reachAreaSum)  # shield regeneration
-    #             # [origin] reward = abs(delta_enemy + delta_deaths)  # shield regeneration
-    #             # [Before 2021-08-14] reward = self.alpha * abs(delta_enemy + delta_deaths) + (1 - self.alpha) * reward_ReachStrategicPoints  # shield regeneration
-    #             # [2021-08-14 Update]
-    #             reward = self.alpha * abs(delta_enemy + delta_deaths) + (
-    #                     1 - self.alpha) * reward_ReachStrategicPoints
-    #         else:
-    #             # [origin] reward = delta_enemy + delta_deaths - delta_ally
-    #             # [OLD] reward = delta_enemy + delta_deaths - delta_ally + reward_reachAreaSum
-    #             # [Before 2021-08-14] reward = self.alpha * (delta_enemy + delta_deaths - delta_ally) + (1-self.alpha) * reward_ReachStrategicPoints
-    #             # [2021-08-14 Update]
-    #             reward = self.alpha * (delta_enemy + delta_deaths - delta_ally) + (
-    #                     1 - self.alpha) * reward_ReachStrategicPoints
-    #         return reward
 
     def get_total_actions(self):
         """Returns the total number of actions an agent could ever take."""
@@ -1725,193 +1129,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
                                  (self.target_SP_loc[pid][1] + deviation[1]))
         return distance
 
-    '''def get_obs_agent(self, agent_id):
-        """Returns observation for agent_id. The observation is composed of:
-
-           - agent movement features (where it can move to, height information and pathing grid)
-           - enemy features (available_to_attack, health, relative_x, relative_y, shield, unit_type)
-           - ally features (visible, distance, relative_x, relative_y, shield, unit_type)
-           - agent unit features (health, shield, unit_type)
-
-           All of this information is flattened and concatenated into a list,
-           in the aforementioned order. To know the sizes of each of the
-           features inside the final list of features, take a look at the
-           functions ``get_obs_move_feats_size()``,
-           ``get_obs_enemy_feats_size()``, ``get_obs_ally_feats_size()`` and
-           ``get_obs_own_feats_size()``.
-
-           The size of the observation vector may vary, depending on the
-           environment configuration and type of units present in the map.
-           For instance, non-Protoss units will not have shields, movement
-           features may or may not include terrain height and pathing grid,
-           unit_type is not included if there is only one type of unit in the
-           map etc.).
-
-           NOTE: Agents should have access only to their local observations
-           during decentralised execution.
-        """
-        unit = self.get_unit_by_id(agent_id)
-
-        move_feats_dim = self.get_obs_move_feats_size()
-        enemy_feats_dim = self.get_obs_enemy_feats_size()
-        ally_feats_dim = self.get_obs_ally_feats_size()
-        own_feats_dim = self.get_obs_own_feats_size()
-
-        move_feats = np.zeros(move_feats_dim, dtype=np.float32)
-        enemy_feats = np.zeros(enemy_feats_dim, dtype=np.float32)
-        ally_feats = np.zeros(ally_feats_dim, dtype=np.float32)
-        own_feats = np.zeros(own_feats_dim, dtype=np.float32)
-
-        if unit.health > 0:  # otherwise dead, return all zeros
-            x = unit.pos.x
-            y = unit.pos.y
-            sight_range = self.unit_sight_range(agent_id)  # default vaue is 9
-
-            # Movement features
-            avail_actions = self.get_avail_agent_actions(agent_id)
-            for m in range(self.n_actions_move):
-                move_feats[m] = avail_actions[m + 2]  # skip the first 2 elements, no-op and stop in avili_actions[]
-
-            ind = self.n_actions_move  # default is 4
-
-            if self.obs_pathing_grid:
-                move_feats[
-                ind: ind + self.n_obs_pathing  # default is 8
-                ] = self.get_surrounding_pathing(unit)
-                ind += self.n_obs_pathing
-
-            if self.obs_terrain_height:
-                move_feats[
-                ind: ind + self.n_obs_height  # default is 9
-                ] = self.get_surrounding_height(unit)
-                ind += self.n_obs_height
-
-            if self.obs_direction_command:
-                move_feats[ind:] = self.get_direction_command(unit)
-
-            # Enemy features
-            for e_id, e_unit in self.enemies.items():
-                e_x = e_unit.pos.x
-                e_y = e_unit.pos.y
-                dist = self.distance(x, y, e_x, e_y)
-
-                if (
-                        dist < sight_range and e_unit.health > 0
-                ):  # visible and alive
-                    # Sight range > shoot range
-                    enemy_feats[e_id, 0] = avail_actions[
-                        self.n_actions_no_attack + e_id
-                        ]  # available
-                    enemy_feats[e_id, 1] = dist / sight_range  # distance
-                    enemy_feats[e_id, 2] = (
-                                                   e_x - x
-                                           ) / sight_range  # relative X
-                    enemy_feats[e_id, 3] = (
-                                                   e_y - y
-                                           ) / sight_range  # relative Y
-
-                    ind = 4
-                    if self.obs_all_health:
-                        enemy_feats[e_id, ind] = (
-                                e_unit.health / e_unit.health_max
-                        )  # health
-                        ind += 1
-                        if self.shield_bits_enemy > 0:
-                            max_shield = self.unit_max_shield(e_unit)
-                            enemy_feats[e_id, ind] = (
-                                    e_unit.shield / max_shield
-                            )  # shield
-                            ind += 1
-
-                    if self.unit_type_bits > 0:
-                        type_id = self.get_unit_type_id(e_unit, False)
-                        enemy_feats[e_id, ind + type_id] = 1  # unit type
-
-            # Ally features
-            al_ids = [
-                al_id for al_id in range(self.n_agents) if al_id != agent_id
-            ]
-            for i, al_id in enumerate(al_ids):
-
-                al_unit = self.get_unit_by_id(al_id)
-                al_x = al_unit.pos.x
-                al_y = al_unit.pos.y
-                dist = self.distance(x, y, al_x, al_y)
-
-                if (
-                        dist < sight_range and al_unit.health > 0
-                ):  # visible and alive
-                    ally_feats[i, 0] = 1  # visible
-                    ally_feats[i, 1] = dist / sight_range  # distance
-                    ally_feats[i, 2] = (al_x - x) / sight_range  # relative X
-                    ally_feats[i, 3] = (al_y - y) / sight_range  # relative Y
-
-                    ind = 4
-                    if self.obs_all_health:
-                        ally_feats[i, ind] = (
-                                al_unit.health / al_unit.health_max
-                        )  # health
-                        ind += 1
-                        if self.shield_bits_ally > 0:
-                            max_shield = self.unit_max_shield(al_unit)
-                            ally_feats[i, ind] = (
-                                    al_unit.shield / max_shield
-                            )  # shield
-                            ind += 1
-
-                    if self.unit_type_bits > 0:
-                        type_id = self.get_unit_type_id(al_unit, True)
-                        ally_feats[i, ind + type_id] = 1
-                        ind += self.unit_type_bits
-
-                    if self.obs_last_action:
-                        ally_feats[i, ind:] = self.last_action[al_id]
-
-            # Own features
-            ind = 0
-            if self.obs_own_health:
-                own_feats[ind] = unit.health / unit.health_max
-                ind += 1
-                if self.shield_bits_ally > 0:
-                    max_shield = self.unit_max_shield(unit)
-                    own_feats[ind] = unit.shield / max_shield
-                    ind += 1
-
-            if self.unit_type_bits > 0:
-                type_id = self.get_unit_type_id(unit, True)
-                own_feats[ind + type_id] = 1
-
-        agent_obs = np.concatenate(
-            (
-                move_feats.flatten(),
-                enemy_feats.flatten(),
-                ally_feats.flatten(),
-                own_feats.flatten(),
-            )
-        )
-
-        if self.obs_timestep_number:
-            agent_obs = np.append(agent_obs,
-                                  self._episode_steps / self.episode_limit)
-
-        if self.debug:
-            logging.debug("Obs Agent: {}".format(agent_id).center(60, "-"))
-            logging.debug("Avail. actions {}".format(
-                self.get_avail_agent_actions(agent_id)))
-            logging.debug("Move feats {}".format(move_feats))
-            logging.debug("Enemy feats {}".format(enemy_feats))
-            logging.debug("Ally feats {}".format(ally_feats))
-            logging.debug("Own feats {}".format(own_feats))
-
-        return agent_obs'''
-
-    '''def get_obs(self):
-        """Returns all agent observations in a list.
-        NOTE: Agents should have access only to their local observations
-        during decentralised execution.
-        """
-        agents_obs = [self.get_obs_agent(i) for i in range(self.n_agents)]
-        return agents_obs'''
 
     # TODO: 2021-10-10: Observation of the Level 3 commander
     def get_obs_L3(self):
@@ -1937,32 +1154,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
 
     def get_obs_unit_agent(self, agent_id, platoon_id):
         # Get the observation of each unit agent from a given platoon.
-
-        """Returns observation for agent_id. The observation is composed of:
-
-           - agent movement features (where it can move to, height information and pathing grid)
-           - enemy features (available_to_attack, health, relative_x, relative_y, shield, unit_type)
-           - ally features (visible, distance, relative_x, relative_y, shield, unit_type)
-           - agent unit features (health, shield, unit_type)
-
-           All of this information is flattened and concatenated into a list,
-           in the aforementioned order. To know the sizes of each of the
-           features inside the final list of features, take a look at the
-           functions ``get_obs_move_feats_size()``,
-           ``get_obs_enemy_feats_size()``, ``get_obs_ally_feats_size()`` and
-           ``get_obs_own_feats_size()``.
-
-           The size of the observation vector may vary, depending on the
-           environment configuration and type of units present in the map.
-           For instance, non-Protoss units will not have shields, movement
-           features may or may not include terrain height and pathing grid,
-           unit_type is not included if there is only one type of unit in the
-           map etc.).
-
-           NOTE: Agents should have access only to their local observations
-           during decentralised execution.
-        """
-        
   
         # platoon = self.get_platoon_by_id(platoon_id)
         unit = self.get_platoon_unit_by_id(agent_id, platoon_id)
@@ -2137,108 +1328,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
 
         return agent_obs
 
-    '''def get_state(self):
-        """Returns the global state.
-        NOTE: This functon should not be used during decentralised execution.
-        """
-        if self.obs_instead_of_state:
-            obs_concat = np.concatenate(self.get_obs(), axis=0).astype(
-                np.float32
-            )
-            return obs_concat
-        
-        #print('damn')
-        
-        nf_al = 4 + self.shield_bits_ally + self.unit_type_bits  # default length is 4, [health, cooldown, rel_x, rel_y]
-        nf_en = 3 + self.shield_bits_enemy + self.unit_type_bits  # default length is 3, [health, rel_x, rel_y]
-
-        ally_state = np.zeros((self.n_agents, nf_al))  # shape (8,4)
-        enemy_state = np.zeros((self.n_enemies, nf_en))  # shape (8,3)
-
-        center_x = self.map_x / 2
-        center_y = self.map_y / 2
-
-        for al_id, al_unit in self.agents.items():
-            if al_unit.health > 0:
-                x = al_unit.pos.x
-                y = al_unit.pos.y
-                max_cd = self.unit_max_cooldown(al_unit)
-
-                ally_state[al_id, 0] = (
-                        al_unit.health / al_unit.health_max
-                )  # health
-                if (
-                        self.map_type == "MMM"
-                        and al_unit.unit_type == self.medivac_id
-                ):
-                    ally_state[al_id, 1] = al_unit.energy / max_cd  # energy
-                else:
-                    ally_state[al_id, 1] = (
-                            al_unit.weapon_cooldown / max_cd
-                    )  # cooldown
-                ally_state[al_id, 2] = (
-                                               x - center_x
-                                       ) / self.max_distance_x  # relative X
-                ally_state[al_id, 3] = (
-                                               y - center_y
-                                       ) / self.max_distance_y  # relative Y
-
-                ind = 4
-                if self.shield_bits_ally > 0:
-                    max_shield = self.unit_max_shield(al_unit)
-                    ally_state[al_id, ind] = (
-                            al_unit.shield / max_shield
-                    )  # shield
-                    ind += 1
-
-                if self.unit_type_bits > 0:
-                    type_id = self.get_unit_type_id(al_unit, True)
-                    ally_state[al_id, ind + type_id] = 1
-
-        for e_id, e_unit in self.enemies.items():
-            if e_unit.health > 0:
-                x = e_unit.pos.x
-                y = e_unit.pos.y
-
-                enemy_state[e_id, 0] = (
-                        e_unit.health / e_unit.health_max
-                )  # health
-                enemy_state[e_id, 1] = (
-                                               x - center_x
-                                       ) / self.max_distance_x  # relative X
-                enemy_state[e_id, 2] = (
-                                               y - center_y
-                                       ) / self.max_distance_y  # relative Y
-
-                ind = 3
-                if self.shield_bits_enemy > 0:
-                    max_shield = self.unit_max_shield(e_unit)
-                    enemy_state[e_id, ind] = (
-                            e_unit.shield / max_shield
-                    )  # shield
-                    ind += 1
-
-                if self.unit_type_bits > 0:
-                    type_id = self.get_unit_type_id(e_unit, False)
-                    enemy_state[e_id, ind + type_id] = 1
-
-        state = np.append(ally_state.flatten(), enemy_state.flatten())
-        if self.state_last_action:
-            state = np.append(state, self.last_action.flatten())
-        if self.state_timestep_number:
-            state = np.append(state,
-                              self._episode_steps / self.episode_limit)
-
-        state = state.astype(dtype=np.float32)
-
-        if self.debug:
-            logging.debug("STATE".center(60, "-"))
-            logging.debug("Ally state {}".format(ally_state))
-            logging.debug("Enemy state {}".format(enemy_state))
-            if self.state_last_action:
-                logging.debug("Last actions {}".format(self.last_action))
-
-        return state'''
 
     def get_state_company(self):
         """Returns the global state of the whole company.
@@ -2728,11 +1817,12 @@ class StarCraft2Env_HC(MultiAgentEnv):
         n_enemy_platoons = self.n_enemy_platoons
         n_enemy_unit_in_platoon = self.n_enemy_unit_in_platoon
         
-        self.current_path = self.path_sequences[self.path_id] #random.choice(self.path_sequences)
-        self.path_id += 1
-        if self.path_id == 3:
-          self.path_id = 0
-        print('SHUBHAM ~~~~~~~~~~ ally path: ' , self.current_path)
+        if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
+            self.current_path = self.path_sequences[self.path_id] #random.choice(self.path_sequences)
+            self.path_id += 1
+            if self.path_id == 3:
+              self.path_id = 0
+            print('Path taken: ' , self.current_path)
         
         while True:
             self.ally_platoons = [[] for _ in range(n_ally_platoons)]
@@ -2787,23 +1877,7 @@ class StarCraft2Env_HC(MultiAgentEnv):
                 if unit.owner == 2
             ]
 
-            # update max_reward  # todo 2022-03-08 this is where cause the reward to be very huge
             counter = 0
-            # if self.map_name in ['4t_vs_0t_8SPs_randomized', '4t_vs_0t_8SPs',
-            #                      '4t_vs_0t_8SPs_RandomEnemy',
-            #                      '4t_vs_0t_8SPs_RandomEnemy_075']:  # these scenarios doesn't have enemies
-            #     for i in range(self.n_enemies):
-            #         self.max_reward += 160
-            #         counter += 1
-
-            # for unit in self._obs.observation.raw_data.units:
-            #     if unit.owner == 2:
-            #         self.enemies[len(self.enemies)] = unit
-            #         # separate the function to update the max_reward
-            #         if self._episode_count == 0:
-            #             self.max_reward += unit.health_max + unit.shield_max
-            #             counter += 1
-
             for unit in self._obs.observation.raw_data.units:
                 if unit.owner == 2:
                     self.enemies[len(self.enemies)] = unit
@@ -2825,92 +1899,15 @@ class StarCraft2Env_HC(MultiAgentEnv):
                             counter += 1
 
             if counter == self.n_enemies:
-                # use alpha to change the proportion of reward for combat and reward for moving.
-                # self.max_reward = self.alpha * self.max_reward \
-                #                   + (1 - self.alpha) * self.n_agents * self.reward_SP \
-                #                   + self.reward_win
                 self.max_reward = self.alpha * self.max_reward \
                                   + (1 - self.alpha) * (self.n_agents * self.reward_SP
                                                         + self.n_sp * self.reward_arrive) \
                                   + self.reward_win
                                   
-            # # Palse to put enemies into platoon
-            # for i in range(len(enemy_units)):
-            #     self.enemies[i] = enemy_units[i]
-            #     for t in range(len(self.enemy_platoons)):
-            #         if len(self.enemy_platoons[t]) < n_enemy_unit_in_platoon:
-            #             self.enemy_platoons[t].append(enemy_units[i])
-            #             if self.debug:
-            #                 logging.debug(
-            #                     "Enemy unit {} is {}, x = {}, y = {}, in platoon {}.".format(
-            #                         i,
-            #                         ally_units_sorted[i].unit_type,
-            #                         ally_units_sorted[i].pos.x,
-            #                         ally_units_sorted[i].pos.y,
-            #                         t,
-            #                     )
-            #                 )
-            #             break
-
-            # while True:
-            #     # Sometimes not all units have yet been created by SC2
-            #     self.agents = {}
-            #     self.enemies = {}
-            #
-            #     # grab the units from the environment
-            #     ally_units = [
-            #         unit
-            #         for unit in self._obs.observation.raw_data.units
-            #         if unit.owner == 1
-            #     ]
-            #
-            #     # sort the agent units
-            #     ally_units_sorted = sorted(
-            #         ally_units,
-            #         key=attrgetter("unit_type", "pos.x", "pos.y"),
-            #         reverse=False,
-            #     )
-            #
-            #
-            #     self.initial_pos = []
-            #     for i in range(len(ally_units_sorted)):
-            #         self.agents[i] = ally_units_sorted[i]
-            #         if self.debug:
-            #             logging.debug(
-            #                 "Unit {} is {}, x = {}, y = {}".format(
-            #                     len(self.agents),
-            #                     self.agents[i].unit_type,
-            #                     self.agents[i].pos.x,
-            #                     self.agents[i].pos.y,
-            #                 )
-            #             )
-            #         #  record the initialized position for agents.
-            #         self.initial_pos.append([self.agents[i].pos.x, self.agents[i].pos.y])
-
-            # -------------------------------------------
-            # use initial position as the last position
-            # for i in range(len(self.agents)):
-            #    self.agents[i].last_pos.last_x = self.agents[i].pos.x
-            #    self.agents[i].last_pos.last_y = self.agents[i].pos.y
-            # self.agents[i].pos.last_x = self.agents[i].pos.x
-            # self.agents[i].pos.last_y = self.agents[i].pos.y
-            # -------------------------------------------
-
-            # -------------------------------------------
-            # 2021-09-14: Add the reach-location counter
-            # todo this counter of reaching needs to be changed for hierarchical learning
-
-            # add record of arriving points
-            # TODO: [10-19] init the first target location
-
-            # TODO Update on 2022-03-16: Get the start location.
             
             self.init_platoon_SPs = []
             for platoon in self.ally_platoons:
                 init_platoon_sp = self.get_platoon_current_sp(platoon)  # get the current SP of the selected platoon
-                if 1:
-                  #print('SHUBHAM platoon initial pos:', self.initial_pos[0])
-                  print('SHUBHAM platoon initial SP:', init_platoon_sp, ' ', self.map_sps[str(init_platoon_sp)])
                 self.init_platoon_SPs.append(init_platoon_sp)
 
             # initialize the recording of reaching the SPs
@@ -2919,49 +1916,12 @@ class StarCraft2Env_HC(MultiAgentEnv):
                 self.platoons_move_record = [[0] * len(self.map_sps) for _ in
                                              range(self.n_ally_platoons)]  # Track where the platoons has been
 
-                if self.FALCON_demo:  # todo: initial different SPs for each platoon
-                    '''
-                    In hierarchical control architecture, the FALCON_demo initialize the platoons with different targets, 
-                    where P1, P2, P3 are given with SP1, SP1, SP2 as the start of the episode.
-                    In non-hierarchical scenarios, the platoons are given with the same target point, SP1, at the start of 
-                    the episode. 
-
-                    NOTE: When do the experiments of the movement in the intervals, the first SP will changes. 
-                    Every agents need to go to sp 2 in the 4t_vs_4t_SP12 scenario
-                    '''
-                    self.target_SP = ["0", "1", "2"]
-                    self.target_SP_loc = [self.map_sps["0"], self.map_sps["1"], self.map_sps["2"]]
-                    self.target_SP_id = [0, 1, 2]
-
-                    # TODO: [2021-11-05] Make P2 the first platon to move
-                    self.next_movement_platoon = 2  # the first platoon to move is p0
-                else:
-                    self.target_SP_id = self.get_target_SP_id(self.init_platoon_SPs)
-                    print('SHUBHAM new target SP:', self.target_SP_id, self.map_sps[str(self.target_SP_id[0])])
-                    self.target_SP_loc = [self.map_sps[str(self.target_SP_id[i])] for i in range(self.n_ally_platoons)]
-                    self.target_SP = [str(self.target_SP_id[i]) for i in range(self.n_ally_platoons)]
+                self.target_SP_id = self.get_target_SP_id(self.init_platoon_SPs)
+                self.target_SP_loc = [self.map_sps[str(self.target_SP_id[i])] for i in range(self.n_ally_platoons)]
+                self.target_SP = [str(self.target_SP_id[i]) for i in range(self.n_ally_platoons)]
             else:
                 self.agent_reach_point = [0 for _ in range(self.n_ally_agent_in_platoon)]
-                
-            # origin -------------------------------------------
-
-            # counter = 0
-            # for unit in self._obs.observation.raw_data.units:
-            #     if unit.owner == 2:
-            #         self.enemies[len(self.enemies)] = unit
-            #         if self._episode_count == 0:
-            #             self.max_reward += unit.health_max + unit.shield_max
-            #             counter += 1
-
-            #
-            # if counter == self.n_enemies:
-            #     # use alpha to change the proportion of reward for combat and reward for moving.
-            #     self.max_reward = self.alpha * self.max_reward \
-            #                       + (1 - self.alpha) * self.n_agents * self.reward_StrategicPoint_val \
-            #                       + self.reward_win
-
-            # TODO: Check the usage of min_unit_type
-            
+  
             if self._episode_count == 0:
                 if self.hierarchical:
                     min_unit_type = min(
@@ -2996,106 +1956,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
                 self.full_restart()
                 self.reset()
         return
-        # use the result of self.init_units.
-
-    def init_units(self):
-        """Initialise the units."""
-        while True:
-            # Sometimes not all units have yet been created by SC2
-            self.agents = {}
-            self.enemies = {}
-
-            # get the ally units from the environment
-            ally_units = [
-                unit
-                for unit in self._obs.observation.raw_data.units
-                if unit.owner == 1
-            ]
-
-            # sort the ally units
-            ally_units_sorted = sorted(
-                ally_units,
-                key=attrgetter("unit_type", "pos.x", "pos.y"),
-                reverse=False,
-            )
-
-            # put the sorted agents in the dictionary.
-            self.initial_pos = []
-            for i in range(len(ally_units_sorted)):
-                self.agents[i] = ally_units_sorted[i]
-                if self.debug:
-                    logging.debug(
-                        "Unit {} is {}, x = {}, y = {}".format(
-                            len(self.agents),
-                            self.agents[i].unit_type,
-                            self.agents[i].pos.x,
-                            self.agents[i].pos.y,
-                        )
-                    )
-                #  record the initialized position for agents.
-                self.initial_pos.append([self.agents[i].pos.x, self.agents[i].pos.y])
-
-            # -------------------------------------------
-            # use initial position as the last position
-            # for i in range(len(self.agents)):
-            #    self.agents[i].last_pos.last_x = self.agents[i].pos.x
-            #    self.agents[i].last_pos.last_y = self.agents[i].pos.y
-            # self.agents[i].pos.last_x = self.agents[i].pos.x
-            # self.agents[i].pos.last_y = self.agents[i].pos.y
-            # -------------------------------------------
-
-            # 2021-09-14: Add the reach-location counter
-            self.agent_reach_point = [0 for _ in range(self.n_agents)]
-            if self.hierarchical:
-                self.agent_reach_point = [[False] * self.n_ally_agent_in_platoon] * self.n_ally_platoons
-
-            # put the enemies in the dictionary.
-            # Meanwhile update the max_reward
-            counter = 0
-            for unit in self._obs.observation.raw_data.units:
-                if unit.owner == 2:
-                    self.enemies[len(self.enemies)] = unit
-                    if self._episode_count == 0:
-                        '''
-                        Update the max reward with the aggregated enemy health value.
-                        In 4t scenario, the aggregated enemy health value is 160 * 4 = 640.
-                        The shield value for siege tank is 0.
-                        '''
-                        self.max_reward += unit.health_max + unit.shield_max
-                        counter += 1
-            if counter == self.n_enemies:
-                # self.max_reward = self.alpha * self.max_reward \
-                #                   + (1 - self.alpha) * self.n_agents * self.reward_SP \
-                #                   + self.reward_win
-                '''
-                Use alpha to balance the proportion of combat reward and movement reward.
-                Update the max_reward with the reward_arrive (the reward for arriving strategic point)
-                '''
-                self.max_reward = self.alpha * self.max_reward \
-                                  + (1 - self.alpha) * (self.n_agents * self.reward_SP
-                                                        + self.n_sp * self.reward_arrive) \
-                                  + self.reward_win
-
-            # TODO What does this code chunk means?
-            if self._episode_count == 0:
-                min_unit_type = min(
-                    unit.unit_type for unit in self.agents.values()
-                )
-                self._init_ally_unit_types(min_unit_type)
-
-            # check if all agents and enemies are created
-            all_agents_created = (len(self.agents) == self.n_agents)
-            all_enemies_created = (len(self.enemies) == self.n_enemies)
-
-            if all_agents_created and all_enemies_created:  # all good
-                return
-
-            try:
-                self._controller.step(1)
-                self._obs = self._controller.observe()
-            except (protocol.ProtocolError, protocol.ConnectionError):
-                self.full_restart()
-                self.reset()
 
     def update_platoons(self):
         """ Update platoons after an environment step. """
@@ -3103,10 +1963,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
         n_enemy_alive = 0
 
         arrive_reward = [False] * self.n_ally_platoons
-
-        # Store previous state
-        # self.previous_ally_units = deepcopy(self.agents)
-        # self.previous_enemy_units = deepcopy(self.enemies)
 
         self.previous_ally_platoons = deepcopy(self.ally_platoons)
         self.previous_enemy_platoons = deepcopy(self.enemies)
@@ -3168,26 +2024,15 @@ class StarCraft2Env_HC(MultiAgentEnv):
 
                 number_arrive[pid] = self.agent_reach_point[pid].count(True)  # 目前到达的单位的数量
                 
-                #print('SHUBHAM~~~~~~~~ num map_sps:', len(self.map_sps))
-                
                 if number_arrive[pid] == n_ally_alive[pid] > 0:  # A platoon reach a SP.
                     arrive_reward[pid] = True
 
                     self.platoons_move_record[pid][self.target_SP_id[pid]] = 1  # denote the platoon has arrived the sp
-
-                    # TODO: when training on intervals, comment these codes.
-                    """
-                    In the FALCON demo, even when the first platoon arrive at SP11, the target of other platoons will 
-                    still be updated, until all platoons arrive SP 11.
-                    """
                     
-                    
-                    if not (self.target_SP_id[pid] + 1) == len(
-                            self.map_sps):  # When the platoon arrive the last SP, don't issue new SP.
-                        if self.map_name in ['4t_vs_4t_3paths_cont_nav', '4t_vs_20t_3paths', '4t_vs_12t_3paths_general']:
+                    if not (self.target_SP_id[pid] + 1) == len(self.map_sps):  # When the platoon arrive the last SP, don't issue new SP.
+                        if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
                           cur_target = self.target_SP_id[pid]
                           self.target_SP_id[pid] = self.get_target_SP_id([cur_target])[0]
-                          print('SHUBHAM cur SP, new target SP: ', cur_target, self.target_SP_id[pid])
                           self.target_SP[pid] = str(self.target_SP_id[pid])
                           self.target_SP_loc[pid] = self.map_sps[self.target_SP[pid]]
                         else:
@@ -3205,167 +2050,32 @@ class StarCraft2Env_HC(MultiAgentEnv):
                         if pid == 0:
                             self.next_movement_platoon = 2
                         else:
-                            self.next_movement_platoon = pid - 1
-
-            '''arrive_sp1 = False
-            check_arrive_sp1 = [i[0] for i in self.platoons_move_record]
-            if check_arrive_sp1.count(1) == self.n_ally_platoons:
-                arrive_sp1 = True
-
-            arrive_sp2 = False
-            check_arrive_sp2 = [i[1] for i in self.platoons_move_record]
-            if check_arrive_sp2.count(1) == self.n_ally_platoons:
-                arrive_sp2 = True
-
-            arrive_sp3 = False
-            check_arrive_sp3 = [i[2] for i in self.platoons_move_record]
-            if check_arrive_sp3.count(1) == self.n_ally_platoons:
-                arrive_sp3 = True
-
-            arrive_sp4 = False
-            check_arrive_sp4 = [i[3] for i in self.platoons_move_record]
-            if check_arrive_sp4.count(1) == self.n_ally_platoons:
-                arrive_sp4 = True
-
-            arrive_sp5 = False
-            check_arrive_sp5 = [i[4] for i in self.platoons_move_record]
-            if check_arrive_sp5.count(1) == self.n_ally_platoons:
-                arrive_sp5 = True
-
-            arrive_sp6 = False
-            check_arrive_sp6 = [i[5] for i in self.platoons_move_record]
-            if check_arrive_sp6.count(1) == self.n_ally_platoons:
-                arrive_sp6 = True
-
-            arrive_sp7 = False
-            check_arrive_sp7 = [i[6] for i in self.platoons_move_record]
-            if check_arrive_sp7.count(1) == self.n_ally_platoons:
-                arrive_sp7 = True
-
-            arrive_sp8 = False
-            check_arrive_sp8 = [i[7] for i in self.platoons_move_record]
-            if check_arrive_sp8.count(1) == self.n_ally_platoons:
-                arrive_sp8 = True'''
+                            self.next_movement_platoon = pid - 1           
                 
-            if self.map_name in ['4t_vs_4t_3paths_cont_nav', '4t_vs_20t_3paths', '4t_vs_12t_3paths_general']: ##SHUBHAM
+            if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
               arrive_sp13 = False
               check_arrive_sp13 = [i[12] for i in self.platoons_move_record] #SP13 is last ##change made by SHUBHAM
               if check_arrive_sp13.count(1) == self.n_ally_platoons:
                   arrive_sp13 = True
               
-                
-            #
-            # arrive_sp9 = False
-            # check_arrive_sp9 = [i[8] for i in self.platoons_move_record]
-            # if check_arrive_sp9.count(1) == self.n_ally_platoons:
-            #     arrive_sp9 = True
-            #
-            # arrive_sp10 = False
-            # check_arrive_sp10 = [i[9] for i in self.platoons_move_record]
-            # if check_arrive_sp10.count(1) == self.n_ally_platoons:
-            #     arrive_sp10 = True
 
-            #
-            # arrive_sp11 = False
-            # check_arrive_sp11 = [i[10] for i in self.platoons_move_record]
-            # if check_arrive_sp11.count(1) == self.n_ally_platoons:
-            #     arrive_sp11 = True
-
-            # todo change the win criteria here.
-
-            if self.map_name in ['4t_vs_4t_3paths_cont_nav', '4t_vs_20t_3paths', '4t_vs_12t_3paths_general']:
+            if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
                 if self._episode_steps == self.episode_limit and not arrive_sp13:
-                    print('SHUBHAM timeout steps !!!!!!!!!!!!!!!!!!!!!!!!', self._episode_steps)
                     return -1, arrive_reward #lost
                     
-                elif (sum(n_ally_alive) == 0 and n_enemy_alive > 0
-                        or self.only_medivac_left(ally=True)):
-                    print('SHUBHAM allies lost !!!!!!!!!!!!!!!!!!!!!!!!', self._episode_steps)
+                elif (sum(n_ally_alive) == 0 and n_enemy_alive > 0 or self.only_medivac_left(ally=True)):
                     return -1, arrive_reward #lost
+                
+                elif (sum(n_ally_alive) > 0 and (arrive_sp13)  # and n_enemy_alive == 0
+                    or self.only_medivac_left(ally=False)):
+                    return 1, arrive_reward  # won
+
+                elif sum(n_ally_alive) == 0 and n_enemy_alive == 0:
+                    return 0, arrive_reward
 
             else:
-                if (sum(n_ally_alive) == 0 and n_enemy_alive > 0
-                        or self.only_medivac_left(ally=True)):
+                if (sum(n_ally_alive) == 0 and n_enemy_alive > 0 or self.only_medivac_left(ally=True)):
                     return -1, arrive_reward  # lost
-
-            # if (sum(n_ally_alive) > 0 and n_enemy_alive == 0 and arrive_sp1  # TODO: change the required SP to arrive.
-            #         or self.only_medivac_left(ally=False)):
-            #     return 1, arrive_reward  # won
-
-            if (sum(n_ally_alive) > 0 and (arrive_sp13)  # and n_enemy_alive == 0
-                    or self.only_medivac_left(ally=False)):
-                return 1, arrive_reward  # won
-
-            if sum(n_ally_alive) == 0 and n_enemy_alive == 0:
-                return 0, arrive_reward
-
-        else:
-            # update the alive agents
-            for al_id, al_unit in self.agents.items():
-                updated = False
-                for unit in self._obs.observation.raw_data.units:
-                    if al_unit.tag == unit.tag:
-                        self.agents[al_id] = unit
-                        updated = True
-                        n_ally_alive += 1
-                        break
-                if not updated:  # dead
-                    al_unit.health = 0
-
-            # Update the status of enemies
-            for e_id, e_unit in self.enemies.items():
-                updated = False
-                for unit in self._obs.observation.raw_data.units:
-                    if e_unit.tag == unit.tag:
-                        self.enemies[e_id] = unit
-                        updated = True
-                        n_enemy_alive += 1
-                        break
-
-                if not updated:  # dead
-                    e_unit.health = 0
-
-            # TODO: These lines defines the game-end signal
-            # The return values here need to be changed.
-            if (n_ally_alive == 0 and n_enemy_alive > 0
-                    or self.only_medivac_left(ally=True)):
-                return -1  # lost
-
-            # HERE to examine if the agents are at the target point
-            # ---------------------------------------------------------------------------------------
-            # agent_reach_point = True
-            # for al_id, al_unit in self.agents.items():
-            #     distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0]) ** 2 + (
-            #                 al_unit.pos.y - self.reward_StrategicPoint_loc[1]) ** 2)
-            #     if distance > 3:
-            #         agent_reach_point = False
-            # if (n_ally_alive > 0 and n_enemy_alive == 0 and agent_reach_point == True
-            #         or self.only_medivac_left(ally=False)):
-            #     return 1  # won
-            # ---------------------------------------------------------------------------------------
-
-            # ---------------------------------------------------------------------------------------
-            # 2021-09-11: Update the evaluation of winning the game
-            for al_id, al_unit in self.agents.items():
-                distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0]) ** 2 + (
-                        al_unit.pos.y - self.reward_StrategicPoint_loc[1]) ** 2)
-                if distance < 5 and al_unit.health != 0:
-                    self.agent_reach_point[al_id] = True  # update arrival information
-
-            number_arrive = self.agent_reach_point.count(True)
-
-            if (n_ally_alive > 0 and n_enemy_alive == 0 and number_arrive == n_ally_alive
-                    or self.only_medivac_left(ally=False)):
-                return 1  # won
-            # ---------------------------------------------------------------------------------------
-
-            # origin
-            # if (n_ally_alive > 0 and n_enemy_alive == 0
-            #        or self.only_medivac_left(ally=False)):
-            #    return 1  # won
-
-            if n_ally_alive == 0 and n_enemy_alive == 0:
-                return 0
 
         return None, arrive_reward
 
@@ -3467,9 +2177,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
         return None
 
     def _init_ally_unit_types(self, min_unit_type):
-        """Initialise ally unit types. Should be called once from the
-        init_units function.
-        """
         self._min_unit_type = min_unit_type
         if self.map_type == "marines":
             self.marine_id = min_unit_type
@@ -3561,18 +2268,12 @@ class StarCraft2Env_HC(MultiAgentEnv):
             distance_to_SP = self.distance(SP[1][0], SP[1][1], agent.pos.x, agent.pos.y)
             distance_to_SPs[int(SP[0])] = distance_to_SP
         min_distance = min(distance_to_SPs)
-        #min_distance = sorted(distance_to_SPs)[1] ### since the allies are spawned at a SP, the closest SP is same as the initial pos
-                                                  ### ...so take the second closest
         nearest_sp = distance_to_SPs.index(min_distance)
         return nearest_sp
 
-    def init_R(self):
+    def init_R(self): #point-to-point traversal graph
         # Define the R for the 3 paths scenario
-        if self.map_name in ['4t_vs_4t_3paths_random_move', '4t_vs_4t_3paths_spawnSP1', '4t_vs_4t_3paths_spawnSP4', '4t_vs_4t_3paths_spawnSP7',
-                      '4t_vs_4t_3paths_spawnSP10', '4t_vs_4t_3paths_fixed_enemy', '4t_vs_4t_3paths_dyna_enemy', '4t_vs_4t_3paths_cont_nav',
-                      '4t_vs_20t_3paths', '4t_vs_12t_3paths_general']:
-            # points_list = [(1, 2), (2, 3), (3, 4), (4, 5), (5, 7), (7, 12), (12, 13),
-            #                (2, 6), (6, 7), (1, 8), (8, 9), (9, 10), (10, 11), (11, 12)]
+        if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
             points_list = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 6), (6, 11), (11, 12),
                            (1, 5), (5, 6), (0, 7), (7, 8), (8, 9), (9, 10), (10, 11)]
             goal = 12
@@ -3619,18 +2320,16 @@ class StarCraft2Env_HC(MultiAgentEnv):
     def get_target_SP_id(self, init_platoon_SPs):
         target_sps = []
         
-        if 1:
-          ### SHUBHAM: hack to give equal porbability to each path
-          hack_seq = self.current_path
+        if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
+          path_seq = self.current_path
           for platoon_sp in init_platoon_SPs:
-              current_sp_idx = hack_seq.index(platoon_sp)
-              if current_sp_idx != len(hack_seq)-1:
-                target_sp = hack_seq[current_sp_idx+1]
+              current_sp_idx = path_seq.index(platoon_sp)
+              if current_sp_idx != len(path_seq)-1:
+                target_sp = path_seq[current_sp_idx+1]
               else:
                 target_sp = platoon_sp
               target_sps.append(target_sp)
           return target_sps
-        
         
         R = self.init_R()
 
@@ -3638,11 +2337,5 @@ class StarCraft2Env_HC(MultiAgentEnv):
             current_sp_row = R[platoon_sp]
             available_sps = np.where(current_sp_row >= 0)[1]
             target_sp = int(np.random.choice(available_sps, 1))
-            # if platoon_sp == 0:
-            #     target_sp = 1
-            # elif platoon_sp == len(self.map_sps) - 1:
-            #     target_sp = platoon_sp - 1
-            # else:
-            #     target_sp = np.random.choice(np.array([platoon_sp - 1, platoon_sp + 1]))
             target_sps.append(target_sp)
         return target_sps
