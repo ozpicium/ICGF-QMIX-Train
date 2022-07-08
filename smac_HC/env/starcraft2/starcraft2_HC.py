@@ -94,24 +94,16 @@ class StarCraft2Env_HC(MultiAgentEnv):
             reward_negative_scale=0.5,
             reward_scale=True,
             reward_scale_rate=20,
-            # ---------------------------------
-            # Add rewards for moving to strategic points.
             reward_StrategicPoint_val=20,
             reward_StrategicPoint_loc=[39, 41],
 
-            # [OLD] reward when arrive certain locations, each agents will gain 5 points if it reaches a area given
-            # reward_reachArea = 5,
-            # reachArea_effect_range = 4,  # radius is 4 by default.
-            # areaCenter = [[20, 23], [34, 34], [44, 48], [58, 58]],
-            # --------------------------------
             replay_dir="",
             replay_prefix="",
             window_size_x=1920,
             window_size_y=1200,
             heuristic_ai=False,
             heuristic_rest=False,
-            debug=False,
-            # debug=True # activate log
+            debug=False, # activate log
             alpha=0.5,
             # add direction
             obs_direction_command=True,
@@ -237,17 +229,8 @@ class StarCraft2Env_HC(MultiAgentEnv):
         self.platoons_move_record = None
         self.init_platoon_SPs = None
 
-        # The number of strategic points that the agents need to reach.
-        if map_name in ['4t_vs_4t_SP01', '4t_vs_4t_SP12', '4t_vs_0t_8SPs_randomized',
-                        '4t_vs_4t_3paths_random_move', '4t_vs_4t_3paths_spawnSP1', '4t_vs_4t_3paths_spawnSP4', '4t_vs_4t_3paths_spawnSP7',
-                      '4t_vs_4t_3paths_spawnSP10', '4t_vs_4t_3paths_fixed_enemy', '4t_vs_4t_3paths_dyna_enemy']:
-            self.n_sp = 1
-        
-        if map_name in ['4t_vs_4t_3paths_cont_nav', '4t_vs_20t_3paths', '4t_vs_12t_3paths_general']: ###SHUBHAM
-            self.n_sp = 13
-            
-        if map_name in ['4t_vs_0t_8SPs', '4t_vs_0t_8SPs_RandomEnemy', '4t_vs_0t_8SPs_RandomEnemy_075']:
-            self.n_sp = 8
+        # The number of strategic points that the agents need to reach.        
+        self.n_sp = 
 
         self.tank_maps = ['Sandbox-8t', '8t', '8t-s11a7', 'Sandbox-4t-waypoint', "4t",
                           "1p_no_enemy_flat", "1p_no_enemy", '12t_1enemy_flat',
@@ -263,6 +246,7 @@ class StarCraft2Env_HC(MultiAgentEnv):
                           '4t_vs_4t_3paths_random_move', '4t_vs_4t_3paths_spawnSP1', '4t_vs_4t_3paths_spawnSP4', '4t_vs_4t_3paths_spawnSP7',
                       '4t_vs_4t_3paths_spawnSP10', '4t_vs_4t_3paths_fixed_enemy', '4t_vs_4t_3paths_dyna_enemy', '4t_vs_4t_3paths_cont_nav',
                       '4t_vs_20t_3paths', '4t_vs_12t_3paths_general']
+        
         self.reward_SP = 20
         self.reward_arrive = 50
         self.FALCON_demo = FALCON_demo
