@@ -6,9 +6,10 @@
 """
 
 from smac_HC.env import StarCraft2Env_HC
+
 # argument.py creates 2 functions, get_common_args() and get_q_decom_args()
-# get_common_args() defines the how we define the env.
-# get_q_decom_args() defines the parameters used in algorithms like vdn, QMIX and QTRAN.
+# get_common_args() contains definitions of common parameters related to the environment setting, training process etc.
+# get_q_decom_args()contains definitions of parameters used in algorithms like VDN, QMIX and QTRAN.
 from common.arguments import get_common_args, get_q_decom_args
 from common.runner import Runner
 import time
@@ -37,9 +38,9 @@ if __name__ == '__main__':
     # function get_q_decom_args() add more parameters based on the parameters generated from get_common_args(), which
     # are simple arguments.
     arguments = get_q_decom_args(get_common_args())
-    print('SHUBHAM~~~~~~~~~~~ Map Name: ', arguments.map, '\n')
+    print('Map Name: ', arguments.map, '\n')
     arguments.replay_dir = arguments.replay_dir + '/' + arguments.map
-    print('SHUBHAM~~~~~~~~~~~ Replay Dir: ', arguments.replay_dir, '\n')
+    print('Replay Dir: ', arguments.replay_dir, '\n')
     
     if arguments.load_model:
         model_dir = arguments.model_dir + '/' + arguments.alg + '/' + arguments.map + '/' + str(1)
@@ -62,9 +63,7 @@ if __name__ == '__main__':
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = ''
         arguments.cuda = False
-
-    # Set the environment，pymarl中设置的也是环境默认参数
-    # StarCraft2Env is a class. In the code below, we change 4 default parameters.
+        
     environment = StarCraft2Env_HC(map_name=arguments.map,
                                    step_mul=arguments.step_mul,
                                    difficulty=arguments.difficulty,
@@ -83,12 +82,6 @@ if __name__ == '__main__':
     # retrieve the information of the environment
     env_info = environment.get_env_info()
 
-    # # number of platoons
-    # arguments.n_platoons = env_info['n_platoons']
-    #
-    # # number of units in each platoon
-    # arguments.n_units_in_platoon = env_info['n_units_in_platoon']
-
     # TODO The state shape of the platoon and the company need further design
 
     # state shape
@@ -100,29 +93,22 @@ if __name__ == '__main__':
     arguments.obs_shape = env_info['obs_shape']
     arguments.company_obs_shape = env_info['company_obs_shape']
     arguments.platoon_obs_shape = env_info['platoon_obs_shape']
-
-    # episode长度限制
+    
     arguments.episode_limit = env_info['episode_limit']
 
     # number of action.
     # number of action equals to the number of none-attack actions (move to 4 directions, stop, and no-op) plus the
     # number of enemies. So, this number is 6+X.
     arguments.n_actions = env_info['n_actions']
-
-    # agent数目
     arguments.n_agents = env_info['n_agents']
-
-    # 进程池，数字是并行的进程数，根据资源自行调整，默认是CPU核的个数
+    
     if arguments.num > 1:
         p = Pool(12)
         for i in range(arguments.num):
             p.apply_async(main, args=(environment, arguments, i))
-        print('子进程开始...')
         p.close()
         p.join()
-        print('所有子进程结束！')
     else:
-        # 0是4.10,1是4.6.2；对于ensemble，1是正常每次都随机权重，0是直接平均。
         main(environment, arguments, 1)  # Start training！ Run main() function.
 
     duration = time.time() - start
