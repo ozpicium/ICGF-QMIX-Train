@@ -98,13 +98,7 @@ class Runner:
         win = False
 
         # Initialize the last actions, length:  non-attack action (6), number of enemies (depends)
-        if self.args.hierarchical:
-            # TODO: Check is this function is useful
-            # self.company.init_last_action()
-            last_action = np.zeros((self.args.n_ally_platoons, self.args.n_ally_agent_in_platoon, self.args.n_actions))
-        else:  # no platoon nor company
-            # last_action = [np.zeros((self.args.n_ally_agent_in_platoon, self.args.n_actions))]
-            last_action = np.zeros((self.args.n_agents, self.args.n_actions))
+        last_action = np.zeros((self.args.n_ally_platoons, self.args.n_ally_agent_in_platoon, self.args.n_actions))
 
         epsilon = 0 if evaluate else self.args.epsilon  # epsilon decay
 
@@ -114,59 +108,33 @@ class Runner:
             # epsilon = epsilon - self.args.epsilon_decay if epsilon > self.args.min_epsilon else epsilon
             self.company.epsilon_decay()
 
-        if self.args.hierarchical:  # initialize episode buffer
-            episode_buffer_company = [[] for _ in range(self.args.n_ally_platoons)]
-            if not evaluate:
-                for platoon_id in range(self.args.n_ally_platoons):
-                    episode_buffer_company[platoon_id] = \
-                        {'o': np.zeros(
+        episode_buffer_company = [[] for _ in range(self.args.n_ally_platoons)]
+        if not evaluate:
+            for platoon_id in range(self.args.n_ally_platoons):
+                episode_buffer_company[platoon_id] = \
+                    {'o': np.zeros(
+                        [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.obs_shape]),
+                        's': np.zeros(
+                            [self.args.episode_limit, self.args.state_shape]),
+                        'a': np.zeros(
+                            [self.args.episode_limit, self.args.n_ally_agent_in_platoon, 1]),
+                        'onehot_a': np.zeros(
+                            [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.n_actions]),
+                        'avail_a': np.zeros(
+                            [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.n_actions]),
+                        'r': np.zeros([self.args.episode_limit, 1]),
+                        'next_o': np.zeros(
                             [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.obs_shape]),
-                            's': np.zeros(
-                                [self.args.episode_limit, self.args.state_shape]),
-                            'a': np.zeros(
-                                [self.args.episode_limit, self.args.n_ally_agent_in_platoon, 1]),
-                            'onehot_a': np.zeros(
-                                [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.n_actions]),
-                            'avail_a': np.zeros(
-                                [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.n_actions]),
-                            'r': np.zeros([self.args.episode_limit, 1]),
-                            'next_o': np.zeros(
-                                [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.obs_shape]),
-                            'next_s': np.zeros([self.args.episode_limit, self.args.state_shape]),
-                            'next_avail_a': np.zeros(
-                                [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.n_actions]),
-                            'done': np.ones([self.args.episode_limit, 1]),
-                            'padded': np.ones([self.args.episode_limit, 1])
-                        }
-        else:
-            # self.company.init_episode_buffer()
-            episode_buffer = None
-            if not evaluate:
-                episode_buffer = {'o': np.zeros([self.args.episode_limit, self.args.n_agents, self.args.obs_shape]),
-                                  's': np.zeros([self.args.episode_limit, self.args.state_shape]),
-                                  'a': np.zeros([self.args.episode_limit, self.args.n_agents, 1]),
-                                  'onehot_a': np.zeros(
-                                      [self.args.episode_limit, self.args.n_agents, self.args.n_actions]),
-                                  'avail_a': np.zeros(
-                                      [self.args.episode_limit, self.args.n_agents, self.args.n_actions]),
-                                  'r': np.zeros([self.args.episode_limit, 1]),
-                                  'next_o': np.zeros(
-                                      [self.args.episode_limit, self.args.n_agents, self.args.obs_shape]),
-                                  'next_s': np.zeros([self.args.episode_limit, self.args.state_shape]),
-                                  'next_avail_a': np.zeros(
-                                      [self.args.episode_limit, self.args.n_agents, self.args.n_actions]),
-                                  'done': np.ones([self.args.episode_limit, 1]),
-                                  'padded': np.ones([self.args.episode_limit, 1])
-                                  }
+                        'next_s': np.zeros([self.args.episode_limit, self.args.state_shape]),
+                        'next_avail_a': np.zeros(
+                            [self.args.episode_limit, self.args.n_ally_agent_in_platoon, self.args.n_actions]),
+                        'done': np.ones([self.args.episode_limit, 1]),
+                        'padded': np.ones([self.args.episode_limit, 1])
+                    }
+        
 
-        if self.args.hierarchical:  # generate the episodes
-            obs_company = self.env.get_obs_company()
-            state_company = self.env.get_state_company()
-        else:
-            obs = self.env.get_obs()
-            state = self.env.get_state()
-
-        # obs_L3 = self.env.get_obs_L3()  # TODO: 2021-10-10: Observation of the Level 3 commander
+        obs_company = self.env.get_obs_company()
+        state_company = self.env.get_state_company()
 
         '''
         Get the available actions for each unit in the company.
@@ -174,17 +142,15 @@ class Runner:
         avail_actions = []  # select the actions
 
         # TODO: Check how to init the policy. Now the policy is initialized every episode.
-        # self.agents.policy.init_hidden(1)
-        if self.args.hierarchical:
-            self.company.init_policy()
+        self.company.init_policy()
 
-            company_avail_actions = [[] for _ in range(self.args.n_ally_platoons)]  # get the available actions
-            for platoon_id in range(self.args.n_ally_platoons):
-                for agent_id in range(self.args.n_ally_agent_in_platoon):
-                    agent_avail_action = self.env.get_avail_platoon_agent_actions(agent_id, platoon_id)
-                    company_avail_actions[platoon_id].append(agent_avail_action)
+        company_avail_actions = [[] for _ in range(self.args.n_ally_platoons)]  # get the available actions
+        for platoon_id in range(self.args.n_ally_platoons):
+            for agent_id in range(self.args.n_ally_agent_in_platoon):
+                agent_avail_action = self.env.get_avail_platoon_agent_actions(agent_id, platoon_id)
+                company_avail_actions[platoon_id].append(agent_avail_action)
 
-            # self.company.get_avail_actions()
+        # self.company.get_avail_actions()
 
         episode_reward = 0
         for step in range(self.args.episode_limit):
@@ -211,81 +177,43 @@ class Runner:
                             actions[platoon_id].append(action)  # add the selected action into platoon actions
                             last_action[platoon_id][agent_id] = onehot_action  # record the last action
                             
-                if self.args.hierarchical:
-                    reward, done, info = self.env.step_company(actions)  # perform the selected actions
-                else:
-                    reward, done, info = self.env.step(actions)
+                reward, done, info = self.env.step_company(actions)  # perform the selected actions
 
                 if not done:  # get the information of the changed environment
-                    if self.args.hierarchical:
-                        next_obs_company = self.env.get_obs_company()
-                        next_state_company = self.env.get_state_company()
-                    else:
-                        next_obs = self.env.get_obs()
-                        next_state = self.env.get_state()
+                    next_obs_company = self.env.get_obs_company()
+                    next_state_company = self.env.get_state_company()
                 else:
                     # As the episode is finished, there will be no next obs and next state.
-                    if self.args.hierarchical:
-                        next_obs_company = obs_company
-                        next_state_company = state_company
-                    else:
-                        next_obs = obs
-                        next_state = state
+                    next_obs_company = obs_company
+                    next_state_company = state_company
 
                 # update the available actions
-                if self.args.hierarchical:
-                    next_avail_actions_company = [[] for _ in range(self.args.n_ally_platoons)]
-                    for platoon_id in range(self.args.n_ally_platoons):
-                        for agent_id in range(self.args.n_ally_agent_in_platoon):
-                            agent_avail_action = self.env.get_avail_platoon_agent_actions(agent_id, platoon_id)
-                            next_avail_actions_company[platoon_id].append(agent_avail_action)
-                else:
-                    next_avail_actions = []
-                    for agent_id in range(self.args.n_agents):
-                        avail_action = self.env.get_avail_agent_actions(agent_id)
-                        next_avail_actions.append(avail_action)
+                next_avail_actions_company = [[] for _ in range(self.args.n_ally_platoons)]
+                for platoon_id in range(self.args.n_ally_platoons):
+                    for agent_id in range(self.args.n_ally_agent_in_platoon):
+                        agent_avail_action = self.env.get_avail_platoon_agent_actions(agent_id, platoon_id)
+                        next_avail_actions_company[platoon_id].append(agent_avail_action)
 
-                if self.args.hierarchical:
-                    for p_id in range(self.args.n_ally_platoons):
-                        if not evaluate:
-                            episode_buffer_company[p_id]['o'][step] = obs_company[p_id]
-                            episode_buffer_company[p_id]['s'][step] = state_company
-                            episode_buffer_company[p_id]['a'][step] = torch.reshape(torch.Tensor(actions[p_id]),(self.args.n_ally_agent_in_platoon, 1))
-                            episode_buffer_company[p_id]['onehot_a'][step] = onehot_actions[p_id]
-                            episode_buffer_company[p_id]['avail_a'][step] = company_avail_actions[p_id]
-                            # TODO the reward for each platoon should be seperated
-                            episode_buffer_company[p_id]['r'][step] = reward[p_id]
-                            episode_buffer_company[p_id]['next_o'][step] = next_obs_company[p_id]
-                            episode_buffer_company[p_id]['next_s'][step] = next_state_company
-                            episode_buffer_company[p_id]['next_avail_a'][step] = next_avail_actions_company[p_id]
-                            episode_buffer_company[p_id]['done'][step] = [done]
-                            episode_buffer_company[p_id]['padded'][step] = [0.]
-                else:
+                for p_id in range(self.args.n_ally_platoons):
                     if not evaluate:
-                        episode_buffer['o'][step] = obs
-                        episode_buffer['s'][step] = state
-                        episode_buffer['a'][step] = np.reshape(actions, [self.args.n_agents, 1])
-                        episode_buffer['onehot_a'][step] = onehot_actions
-                        episode_buffer['avail_a'][step] = avail_actions
-                        episode_buffer['r'][step] = [reward]
-                        episode_buffer['next_o'][step] = next_obs
-                        episode_buffer['next_s'][step] = next_state
-                        episode_buffer['next_avail_a'][step] = next_avail_actions
-                        episode_buffer['done'][step] = [done]
-                        episode_buffer['padded'][step] = [0.]
-
+                        episode_buffer_company[p_id]['o'][step] = obs_company[p_id]
+                        episode_buffer_company[p_id]['s'][step] = state_company
+                        episode_buffer_company[p_id]['a'][step] = torch.reshape(torch.Tensor(actions[p_id]),(self.args.n_ally_agent_in_platoon, 1))
+                        episode_buffer_company[p_id]['onehot_a'][step] = onehot_actions[p_id]
+                        episode_buffer_company[p_id]['avail_a'][step] = company_avail_actions[p_id]
+                        # TODO the reward for each platoon should be seperated
+                        episode_buffer_company[p_id]['r'][step] = reward[p_id]
+                        episode_buffer_company[p_id]['next_o'][step] = next_obs_company[p_id]
+                        episode_buffer_company[p_id]['next_s'][step] = next_state_company
+                        episode_buffer_company[p_id]['next_avail_a'][step] = next_avail_actions_company[p_id]
+                        episode_buffer_company[p_id]['done'][step] = [done]
+                        episode_buffer_company[p_id]['padded'][step] = [0.]
+                
                 episode_reward += sum(reward)
 
-                if self.args.hierarchical:
-                    obs_company = next_obs_company
-                    state_company = next_state_company
-
-                    company_avail_actions = next_avail_actions_company
-                else:
-                    obs = next_obs
-                    state = next_state
-
-                    avail_actions = next_avail_actions
+                obs_company = next_obs_company
+                state_company = next_state_company
+                company_avail_actions = next_avail_actions_company
 
                 # Update epsilon
                 if self.args.epsilon_anneal_scale == 'step':
@@ -310,56 +238,34 @@ class Runner:
 
         for itr in range(self.args.n_itr):
             print('\nITERATION ~~~~~~~~~~~~~~', itr)
-            if self.args.hierarchical:
-                episode_batch_company, _, _ = self.generate_episode(0)
-                for episode_batch_platoon in episode_batch_company:
-                    for key in episode_batch_platoon.keys():
-                        episode_batch_platoon[key] = np.array([episode_batch_platoon[key]])  # transform the shape
+            episode_batch_company, _, _ = self.generate_episode(0)
+            for episode_batch_platoon in episode_batch_company:
+                for key in episode_batch_platoon.keys():
+                    episode_batch_platoon[key] = np.array([episode_batch_platoon[key]])  # transform the shape
 
-                # If there are multiple episodes in a training process, run the rest episodes.
-                for e in range(1, self.args.n_episodes): #By default, n_episodes is equal to 1
-                    episode_company, _, _ = self.generate_episode(e)
-                    for episode_platoon in episode_company:
-                        for key in episode_platoon.keys():
-                            episode_platoon[key] = np.array([episode_platoon[key]])
-                            episode_batch_platoon[key] = np.concatenate(
-                                (episode_batch_platoon[key], episode_platoon[key]),
-                                axis=0)
+            # If there are multiple episodes in a training process, run the rest episodes.
+            for e in range(1, self.args.n_episodes): #By default, n_episodes is equal to 1
+                episode_company, _, _ = self.generate_episode(e)
+                for episode_platoon in episode_company:
+                    for key in episode_platoon.keys():
+                        episode_platoon[key] = np.array([episode_platoon[key]])
+                        episode_batch_platoon[key] = np.concatenate(
+                            (episode_batch_platoon[key], episode_platoon[key]),
+                            axis=0)
 
-                for p_id in range(self.args.n_ally_platoons):  # store the buffer for each platoon
-                    self.company.platoons[p_id].replay_buffer.store(episode_batch_company[p_id])
-                # self.replay_buffer.store(episode_batch_company)
+            for p_id in range(self.args.n_ally_platoons):  # store the buffer for each platoon
+                self.company.platoons[p_id].replay_buffer.store(episode_batch_company[p_id])
+            # self.replay_buffer.store(episode_batch_company)
 
-                # train
-                if self.company.platoons[0].replay_buffer.size < self.args.batch_size * 12.5:
-                    continue
-               
-                for platoon in self.company.platoons:
-                    for _ in range(self.args.train_steps):
-                        # sample the experience from the replay buffer
-                        batch_platoon = platoon.replay_buffer.sample(self.args.batch_size)
-                        platoon.train(batch_platoon, train_steps, self.args.epsilon)
-                        train_steps += 1
-            else:
-                episode_batch, _, _ = self.generate_episode(0)
-                for key in episode_batch.keys():
-                    episode_batch[key] = np.array([episode_batch[key]])
-                for e in range(1, self.args.n_episodes):
-                    episode, _, _ = self.generate_episode(e)
-                    for key in episode_batch.keys():
-                        episode[key] = np.array([episode[key]])
-                        episode_batch[key] = np.concatenate((episode_batch[key], episode[key]), axis=0)
+            # train
+            if self.company.platoons[0].replay_buffer.size < self.args.batch_size * 12.5:
+                continue
 
-                self.replay_buffer.store(episode_batch)  # save the knowledge in the last 5000 episodes
-
-                # train
-                if self.replay_buffer.size < self.args.batch_size * 12.5:
-                    print('replay buffer is smaller than batch size')
-                    continue
-
+            for platoon in self.company.platoons:
                 for _ in range(self.args.train_steps):
-                    batch = self.replay_buffer.sample(self.args.batch_size)  # from buffer (5k) extract 32 episodes
-                    self.agents.train(batch, train_steps, self.args.epsilon)
+                    # sample the experience from the replay buffer
+                    batch_platoon = platoon.replay_buffer.sample(self.args.batch_size)
+                    platoon.train(batch_platoon, train_steps, self.args.epsilon)
                     train_steps += 1
 
             if itr % self.args.evaluation_period == 0:  # start evaluation to capture performance metrics such as win-rate and reward.
