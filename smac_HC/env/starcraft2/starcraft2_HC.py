@@ -245,7 +245,7 @@ class StarCraft2Env_HC(MultiAgentEnv):
                           '4t_vs_0t_8SPs_RandomEnemy', '4t_vs_0t_8SPs_RandomEnemy_075',
                           '4t_vs_4t_3paths_random_move', '4t_vs_4t_3paths_spawnSP1', '4t_vs_4t_3paths_spawnSP4', '4t_vs_4t_3paths_spawnSP7',
                       '4t_vs_4t_3paths_spawnSP10', '4t_vs_4t_3paths_fixed_enemy', '4t_vs_4t_3paths_dyna_enemy', '4t_vs_4t_3paths_cont_nav',
-                      '4t_vs_20t_3paths', '4t_vs_12t_3paths_general']
+                      '4t_vs_20t_3paths', '4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']
         
         self.reward_SP = 20
         self.reward_arrive = 50
@@ -2121,7 +2121,9 @@ class StarCraft2Env_HC(MultiAgentEnv):
 
     def init_R(self): #point-to-point traversal graph
         # Define the R for the 3 paths scenario
-        if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
+        if self.map_name in ['4t_vs_4t_3paths_random_move', '4t_vs_4t_3paths_spawnSP1', '4t_vs_4t_3paths_spawnSP4', '4t_vs_4t_3paths_spawnSP7',
+                      '4t_vs_4t_3paths_spawnSP10', '4t_vs_4t_3paths_fixed_enemy', '4t_vs_4t_3paths_dyna_enemy', '4t_vs_4t_3paths_cont_nav',
+                      '4t_vs_20t_3paths', '4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
             points_list = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 6), (6, 11), (11, 12),
                            (1, 5), (5, 6), (0, 7), (7, 8), (8, 9), (9, 10), (10, 11)]
             goal = 12
