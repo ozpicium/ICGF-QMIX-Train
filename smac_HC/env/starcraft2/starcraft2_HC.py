@@ -230,7 +230,7 @@ class StarCraft2Env_HC(MultiAgentEnv):
         self.init_platoon_SPs = None
 
         # The number of strategic points that the agents need to reach.        
-        self.n_sp = 
+        self.n_sp = len(self.map_sps)
 
         self.tank_maps = ['Sandbox-8t', '8t', '8t-s11a7', 'Sandbox-4t-waypoint', "4t",
                           "1p_no_enemy_flat", "1p_no_enemy", '12t_1enemy_flat',
@@ -255,16 +255,10 @@ class StarCraft2Env_HC(MultiAgentEnv):
         self.obs_distance_target = obs_distance_target
         self.n_obs_distance_target = 1
 
-        # Map arguments
-        # The map_name could be the input from prompt terminal. smac will take this input and return the setting.
         self.map_name = map_name
         map_params = get_map_params(self.map_name)
 
-        self.n_agents = map_params["n_agents"]
-        # TODO add the numbr of agents in a team
-        # self.n_agent_in_team
-        
-        
+        self.n_agents = map_params["n_agents"]     
         self.n_enemies = map_params["n_enemies"]
         self.episode_limit = map_params["limit"]
         self._move_amount = move_amount
@@ -276,7 +270,7 @@ class StarCraft2Env_HC(MultiAgentEnv):
         self.obs_all_health = obs_all_health
         self.obs_instead_of_state = False #obs_instead_of_state
                 
-        #### SHUBHAM-params
+        #### params for Mixed Scenario ('4t_vs_12t_3paths_general' and '12t_vs_12t_3paths_general')
         self.only_local_enemy_obs = 0
         self.only_local_enemy_state = 0
         self.n_local_enemies = 4
@@ -313,17 +307,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
         self.reward_defeat = reward_defeat
         self.reward_scale = reward_scale
         self.reward_scale_rate = reward_scale_rate
-        # ---------------------------------
-        # Add rewards for moving to strategic points.
-        # self.reward_StrategicPoint_val = 20
-        # self.reward_StrategicPoint_loc = [39, 41]
-        # [OLD] reward when arrive certain locations, each agents will gain 5 points if it reaches a area given
-        # reward_reachArea = 5,
-        # reachArea_effect_range = 4,  # radius is 4 by default.
-        # areaCenter = [[20, 23], [34, 34], [44, 48], [58, 58]],
-        # --------------------------------
-        # self.visitRecord = np.zeros((self.n_agents, 4))
-        # --------------------------------
 
         # Other
         self.game_version = game_version
