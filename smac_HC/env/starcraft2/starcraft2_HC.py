@@ -1667,57 +1667,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
 
         return type_id
 
-    '''def get_avail_agent_actions(self, agent_id):
-        """Returns the available actions for agent_id."""
-        # return a list full of 0 & 1, with n_action as length. 1 means the agent could do the action represented in this place.
-        unit = self.get_unit_by_id(agent_id)
-        
-        if unit.health > 0:
-            # cannot choose no-op when alive
-            avail_actions = [0] * self.n_actions  # in 3m map, n_action is 6+3=9. In 8m, is 6+8=14
-
-            # stop should be allowed
-            avail_actions[1] = 1
-
-            # see if we can move
-            if self.can_move(unit, Direction.NORTH):
-                avail_actions[2] = 1
-            if self.can_move(unit, Direction.SOUTH):
-                avail_actions[3] = 1
-            if self.can_move(unit, Direction.EAST):
-                avail_actions[4] = 1
-            if self.can_move(unit, Direction.WEST):
-                avail_actions[5] = 1
-
-            # Can attack only alive units that are alive in the shooting range
-            shoot_range = self.unit_shoot_range(agent_id)  # default value is 6
-            
-            idx = -1
-            
-            # the enemies could be replaced by enemy_platoon
-            for t_id, t_unit in self.enemies.items():
-                if t_unit.health > 0:
-                    dist = self.distance(
-                        unit.pos.x, unit.pos.y, t_unit.pos.x, t_unit.pos.y
-                    )
-                    if dist <= shoot_range:
-                    
-                        if self.only_local_enemy_obs:
-                          idx += 1
-                          
-                          if idx == self.n_local_enemies:
-                            break
-                        else:
-                          idx = t_id
-                          
-                        avail_actions[idx + self.n_actions_no_attack] = 1
-
-            return avail_actions
-
-        else:
-            # only no-op allowed
-            return [1] + [0] * (self.n_actions - 1)'''
-
     def get_avail_platoon_agent_actions(self, agent_id, platoon_id):
         """ Get the available actions for an agent in a given platoon. """
         # return a list full of 0 & 1, with n_action as length. 1 means the agent could do the action represented in this place.
@@ -1756,9 +1705,9 @@ class StarCraft2Env_HC(MultiAgentEnv):
                     
                         if self.only_local_enemy_obs:
                           idx += 1
-                          self.eid_to_attack[platoon_id][agent_id][idx] = t_id 
                           if idx == self.n_local_enemies:
                             break
+                          self.eid_to_attack[platoon_id][agent_id][idx] = t_id 
                         else:
                           idx = t_id
                           
@@ -1923,15 +1872,11 @@ class StarCraft2Env_HC(MultiAgentEnv):
                 self.agent_reach_point = [0 for _ in range(self.n_ally_agent_in_platoon)]
   
             if self._episode_count == 0:
-                if self.hierarchical:
-                    min_unit_type = min(
+                min_unit_type = min(
                         # unit.unit_type for unit in self.agents.values()
                         unit.unit_type for platoon in self.ally_platoons for unit in platoon
-                    )
-                else:
-                    min_unit_type = min(
-                        unit.unit_type for unit in self.agents.values()
-                    )
+                )
+
                 self._init_ally_unit_types(min_unit_type)
 
             # check if all units are created
@@ -2079,103 +2024,6 @@ class StarCraft2Env_HC(MultiAgentEnv):
 
         return None, arrive_reward
 
-    def update_units(self):
-        """Update units after an environment step.
-        This function assumes that self._obs is up-to-date.
-        """
-        # TODO update the units after the movement in env.
-        n_ally_alive = 0
-        n_enemy_alive = 0
-
-        # Store previous state
-        # TODO Store previous company statys
-        if self.hierarchical:
-            self.previous_ally_platoons = deepcopy(self.ally_platoons)
-            self.previous_enemy_units = deepcopy(self.enemies)
-        else:
-            self.previous_ally_units = deepcopy(self.agents)
-            self.previous_enemy_units = deepcopy(self.enemies)
-
-        if self.hierarchical:
-            for platoon in self.ally_platoons:
-                for al_id, al_unit in enumerate(platoon):
-                    updated = False
-                    for unit in self._obs.observation.raw_data.units:
-                        if al_unit.tag == unit.tag:
-                            platoon[al_id] = unit
-                            updated = True
-                            n_ally_alive += 1
-                            break
-                    if not updated:  # dead
-                        al_unit.health = 0
-        else:
-            for al_id, al_unit in self.agents.items():
-                updated = False
-                for unit in self._obs.observation.raw_data.units:
-                    if al_unit.tag == unit.tag:
-                        self.agents[al_id] = unit
-                        updated = True
-                        n_ally_alive += 1
-                        break
-
-                if not updated:  # dead
-                    al_unit.health = 0
-
-        for e_id, e_unit in self.enemies.items():
-            updated = False
-            for unit in self._obs.observation.raw_data.units:
-                if e_unit.tag == unit.tag:
-                    self.enemies[e_id] = unit
-                    updated = True
-                    n_enemy_alive += 1
-                    break
-            if not updated:  # dead
-                e_unit.health = 0
-
-        # TODO: These lines defins the game-end signal
-        # The return values here need to be changed.
-        if (n_ally_alive == 0 and n_enemy_alive > 0
-                or self.only_medivac_left(ally=True)):
-            return -1  # lost
-
-        # HERE to examine if the agents are at the target point
-        # ---------------------------------------------------------------------------------------
-        # agent_reach_point = True
-        # for al_id, al_unit in self.agents.items():
-        #     distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0]) ** 2 + (
-        #                 al_unit.pos.y - self.reward_StrategicPoint_loc[1]) ** 2)
-        #     if distance > 3:
-        #         agent_reach_point = False
-        # if (n_ally_alive > 0 and n_enemy_alive == 0 and agent_reach_point == True
-        #         or self.only_medivac_left(ally=False)):
-        #     return 1  # won
-        # ---------------------------------------------------------------------------------------
-
-        # ---------------------------------------------------------------------------------------
-        # 2021-09-11: Update the evaluation of winning the game
-        for al_id, al_unit in self.agents.items():
-            distance = math.sqrt((al_unit.pos.x - self.reward_StrategicPoint_loc[0]) ** 2 + (
-                    al_unit.pos.y - self.reward_StrategicPoint_loc[1]) ** 2)
-            if distance < 5 and al_unit.health != 0:
-                self.agent_reach_point[al_id] = True  # update arrival information
-
-        number_arrive = self.agent_reach_point.count(True)
-
-        if (n_ally_alive > 0 and n_enemy_alive == 0 and number_arrive == n_ally_alive
-                or self.only_medivac_left(ally=False)):
-            return 1  # won
-        # ---------------------------------------------------------------------------------------
-
-        # origin
-        # if (n_ally_alive > 0 and n_enemy_alive == 0
-        #        or self.only_medivac_left(ally=False)):
-        #    return 1  # won
-
-        if n_ally_alive == 0 and n_enemy_alive == 0:
-            return 0
-
-        return None
-
     def _init_ally_unit_types(self, min_unit_type):
         self._min_unit_type = min_unit_type
         if self.map_type == "marines":
@@ -2320,7 +2168,7 @@ class StarCraft2Env_HC(MultiAgentEnv):
     def get_target_SP_id(self, init_platoon_SPs):
         target_sps = []
         
-        if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']:
+        if self.map_name in ['4t_vs_12t_3paths_general', '12t_vs_12t_3paths_general']: ## the following code is added by Shubham to ensure that each path is selected with equal probability
           path_seq = self.current_path
           for platoon_sp in init_platoon_SPs:
               current_sp_idx = path_seq.index(platoon_sp)
