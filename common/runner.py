@@ -193,55 +193,9 @@ class Runner:
             else:
                 actions = [[] for _ in range(self.args.n_ally_platoons)]
                 onehot_actions = [[] for _ in range(self.args.n_ally_platoons)]
-                # -----------------------------------------------------------------------
-                # for agent_id in range(self.args.n_agents):
-                #     # avail_action = self.env.get_avail_agent_actions(agent_id)
-                #     action = self.agents.choose_action(obs[agent_id], last_action[agent_id], agent_id,
-                #                                        avail_actions[agent_id], epsilon, evaluate)
-                #     onehot_action = np.zeros(self.args.n_actions)
-                #     onehot_action[action] = 1
-                #     onehot_actions.append(onehot_action)
-                #     # 加入联合动作
-                #     actions.append(action)
-                #     # avail_actions.append(avail_action)
-                #     # 记录该动作
-                #     last_action[agent_id] = onehot_action
-                #
 
-                # -----------------------------------------------------------------------
                 for platoon_id in range(self.args.n_ally_platoons):  # for each platoon
-                    if self.args.FALCON_demo:
-                        if self.env.next_movement_platoon == platoon_id:
-                            for agent_id in range(self.args.n_ally_agent_in_platoon):  # for each agent
-                                action = self.company.platoons[platoon_id].choose_action(  # get the action with policy
-                                    obs_company[platoon_id][agent_id],
-                                    last_action[platoon_id][agent_id],
-                                    agent_id,
-                                    company_avail_actions[platoon_id][agent_id],
-                                    epsilon,  # TODO: currently using global epsilon
-                                    evaluate)
-
-                                # one-hot action
-                                onehot_action = np.zeros(self.args.n_actions)
-                                onehot_action[action] = 1
-                                onehot_actions[platoon_id].append(onehot_action)
-                                actions[platoon_id].append(action)  # add the selected action into platoon actions
-                                last_action[platoon_id][agent_id] = onehot_action  # record the last action
-                        else:
-                            for agent_id in range(self.args.n_ally_agent_in_platoon):
-                                if company_avail_actions[platoon_id][agent_id][1] == 1:
-                                    action = 1
-                                if company_avail_actions[platoon_id][agent_id][0] == 1:
-                                    action = 0
-
-                                # one-hot action
-                                onehot_action = np.zeros(self.args.n_actions)
-                                onehot_action[action] = 1
-                                onehot_actions[platoon_id].append(onehot_action)
-                                actions[platoon_id].append(action)  # add the selected action into platoon actions
-                                last_action[platoon_id][agent_id] = onehot_action  # record the last action
-                    else:
-                        for agent_id in range(self.args.n_ally_agent_in_platoon):  # for each agent
+                    for agent_id in range(self.args.n_ally_agent_in_platoon):  # for each agent
                             action = self.company.platoons[platoon_id].choose_action(  # get the action with policy
                                 obs_company[platoon_id][agent_id],
                                 last_action[platoon_id][agent_id],
@@ -256,6 +210,7 @@ class Runner:
                             onehot_actions[platoon_id].append(onehot_action)
                             actions[platoon_id].append(action)  # add the selected action into platoon actions
                             last_action[platoon_id][agent_id] = onehot_action  # record the last action
+                            
                 if self.args.hierarchical:
                     reward, done, info = self.env.step_company(actions)  # perform the selected actions
                 else:
@@ -319,7 +274,6 @@ class Runner:
                         episode_buffer['done'][step] = [done]
                         episode_buffer['padded'][step] = [0.]
 
-                # 更新变量
                 episode_reward += sum(reward)
 
                 if self.args.hierarchical:
@@ -340,13 +294,12 @@ class Runner:
         if not evaluate:  # If it is training, update the epsilon
             self.args.epsilon = epsilon
 
-        # TODO: modify here later
-        # 获取对局信息
         if info.__contains__('battle_won'):
             win = True if done and info['battle_won'] else False
         if evaluate and episode_num == self.args.evaluate_num - 1 and self.args.replay_dir != '':
             self.env.save_replay()
             self.env.close()
+            
         # return episode_buffer, episode_reward, win
         return episode_buffer_company, episode_reward, win
 
