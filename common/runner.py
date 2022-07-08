@@ -309,7 +309,7 @@ class Runner:
         self.max_win_rate = 0
 
         for itr in range(self.args.n_itr):
-            print('\nSHUBHAM ~~~~~~~~~~~~~~', itr)
+            print('\nITERATION ~~~~~~~~~~~~~~', itr)
             if self.args.hierarchical:
                 episode_batch_company, _, _ = self.generate_episode(0)
                 for episode_batch_platoon in episode_batch_company:
@@ -317,7 +317,7 @@ class Runner:
                         episode_batch_platoon[key] = np.array([episode_batch_platoon[key]])  # transform the shape
 
                 # If there are multiple episodes in a training process, run the rest episodes.
-                for e in range(1, self.args.n_episodes):
+                for e in range(1, self.args.n_episodes): #By default, n_episodes is equal to 1
                     episode_company, _, _ = self.generate_episode(e)
                     for episode_platoon in episode_company:
                         for key in episode_platoon.keys():
@@ -333,10 +333,9 @@ class Runner:
                 # train
                 if self.company.platoons[0].replay_buffer.size < self.args.batch_size * 12.5:
                     continue
-                # TODO: [2021-11-16] disable the learning in hierarchical control
+               
                 for platoon in self.company.platoons:
                     for _ in range(self.args.train_steps):
-                        # 从replay buffer(最多5000个记录)中抽取32个episode的经验
                         # sample the experience from the replay buffer
                         batch_platoon = platoon.replay_buffer.sample(self.args.batch_size)
                         platoon.train(batch_platoon, train_steps, self.args.epsilon)
@@ -363,36 +362,32 @@ class Runner:
                     self.agents.train(batch, train_steps, self.args.epsilon)
                     train_steps += 1
 
-            if itr % self.args.evaluation_period == 0:  # 周期性评价
+            if itr % self.args.evaluation_period == 0:  # start evaluation to capture performance metrics such as win-rate and reward.
                 num_eval += 1
                 print(f'Process {self.pid}: {itr} / {self.args.n_itr}')
                 win_rate, episodes_reward = self.evaluate()
 
-                if not self.args.load_result:  # 保存测试结果
+                if not self.args.load_result:
                     self.evaluate_itr.append(itr)
                 else:
                     self.evaluate_itr.append(itr + self.n_trained_episodes)
                 self.win_rates.append(win_rate)
                 self.episodes_rewards.append(episodes_reward)
 
-                # 表现好的模型要额外保存
                 if win_rate > self.max_win_rate:
                     self.max_win_rate = win_rate
                     self.agents.policy.save_model(str(win_rate), self.args.epsilon)
-                # 不时刻保存，从而减少时间花费
+
                 if num_eval % 1 == 0:
                     self.save_results()
                     self.plot()
-        # 最后把所有的都保存一下
+
         self.save_results()
         self.plot()
         self.env.close()
 
     def evaluate(self):
-        """
-        得到平均胜率和每次测试的累加奖赏，方便画误差阴影图
-        :return:
-        """
+        
         win_number = 0
         episodes_reward = []
         for itr in range(self.args.evaluate_num):  # default is 32
@@ -403,11 +398,7 @@ class Runner:
         return win_number / self.args.evaluate_num, episodes_reward
 
     def save_results(self):
-        """
-        保存数据，方便后面多种算法结果画在一张图里比较
-        :return:
-        """
-        # 如果已经有图片就删掉
+
         for filename in os.listdir(self.save_path):
             if filename.endswith('.npy'):
                 os.remove(self.save_path + '/' + filename)
@@ -416,10 +407,7 @@ class Runner:
         np.save(self.save_path + '/episodes_rewards.npy', self.episodes_rewards)
 
     def plot(self):
-        """
-        定期绘图
-        :return:
-        """
+
         fig = plt.figure()
         ax1 = fig.add_subplot(211)
         win_x = np.array(self.evaluate_itr)[:, None]
@@ -435,42 +423,10 @@ class Runner:
         sns.lineplot(x="evaluate_itr", y="episodes_rewards", data=plot_reward, ax=ax2,
                      ci=68, estimator=np.median)
 
-        # 格式化成2016-03-20-11_45_39形式
         tag = self.args.alg + '-' + time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
-        # 如果已经有图片就删掉
+
         for filename in os.listdir(self.save_path):
             if filename.endswith('.png'):
                 os.remove(self.save_path + '/' + filename)
         fig.savefig(self.save_path + "/%s.png" % tag)
         plt.close()
-
-        # plt.figure()
-        # plt.cla()
-        # # 平均胜率图
-        # plt.subplot(2, 1, 1)
-        #
-        # plt.plot(self.evaluate_itr, self.win_rates, c='blue')
-        #
-        # plt.xlabel('itr')
-        # plt.ylabel('win_rates')
-        # # 累加奖赏误差阴影曲线图
-        # plt.subplot(2, 1, 2)
-        # avg_rewards = np.array(self.episodes_rewards).mean(axis=1)
-        #
-        # plt.plot(self.evaluate_itr, avg_rewards, c='blue')
-        #
-        # up_error = []
-        # down_error = []
-        # for i in range(len(self.evaluate_itr)):
-        #     up_bound = np.max(self.episodes_rewards[i])
-        #     down_bound = np.min(self.episodes_rewards[i])
-        #     up_error.append(up_bound - avg_rewards[i])
-        #     down_error.append(avg_rewards[i] - down_bound)
-        # # avg_rewards = np.array(avg_rewards)
-        # up_error = np.array(up_error)
-        # down_error = np.array(down_error)
-        #
-        # plt.fill_between(self.evaluate_itr, avg_rewards - down_error, avg_rewards + up_error,
-        #                  color='blue', alpha=0.2)
-        # plt.xlabel('itr')
-        # plt.ylabel('episode_reward')
