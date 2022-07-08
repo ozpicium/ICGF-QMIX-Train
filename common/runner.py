@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-@Time ： 2020/08/07 10:52
-@Auth ： Kunfeng Li
-@File ：runner.py
-@IDE ：PyCharm
-
-"""
 import os
 import numpy as np
 from common.replay_buffer import ReplayBuffer
@@ -47,12 +39,6 @@ class Runner:
 
         # self.replay_buffer = ReplayBuffer(self.args)
 
-        '''
-        这里，episode_reward 代表一个episode的累加奖赏，
-        episodes_reward代表多个episode的累加奖赏，
-        episodes_rewards代表多次评价的多个episode的累加奖赏
-        '''
-
         # load previous training result
         if not self.args.load_result:
             self.episodes_rewards = []
@@ -78,7 +64,6 @@ class Runner:
             self.n_trained_episodes = max(self.evaluate_itr)
             self.max_win_rate = max(self.win_rates)
 
-        # 保存结果和模型的位置，增加计数，帮助一次运行多个实例
         start_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
         self.save_path = self.args.result_dir + '/' + self.args.alg + '/' + self.args.map + '/' + str(
             itr) + '/' + start_time
@@ -87,8 +72,7 @@ class Runner:
         print('runner initialized')
 
     def generate_episode(self, episode_num, evaluate=False):  # in run(), pass in episode_num == 0
-        # 为保存评价的回放做准备
-        # cannot understand this line
+
         if self.args.replay_dir != '' and evaluate and episode_num == 0:
             self.env.close()
 
